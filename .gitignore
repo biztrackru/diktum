@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+!app/.env.example
 .cache/
 .models/
 outputs/

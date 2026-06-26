@@ -57,7 +57,7 @@ def run_pyannote(
         from pyannote.audio import Pipeline
     except ImportError as error:
         raise DiarizationError(
-            "pyannote.audio is not installed. Run: .venv/bin/python -m pip install -e '.[diarization]'"
+            "pyannote.audio is not installed. Run: .venv/bin/python -m pip install -e 'app[diarization]'"
         ) from error
 
     try:

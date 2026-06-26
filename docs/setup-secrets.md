@@ -9,7 +9,7 @@
 3. Принять условия доступа к модели или отправить запрос на доступ, если Hugging Face показывает gated access.
 4. Создать токен на https://huggingface.co/settings/tokens.
 5. Достаточно токена с read-доступом.
-6. Создать локальный файл `.env` из `.env.example`.
+6. Создать локальный файл `.env` из `app/.env.example`.
 7. Вписать токен в `.env`:
 
 ```bash
@@ -17,6 +17,10 @@ HF_TOKEN=hf_your_token_here
 ```
 
 Файл `.env` добавлен в `.gitignore`.
+
+```bash
+cp app/.env.example .env
+```
 
 ## How To Load Locally
 

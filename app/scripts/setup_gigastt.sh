@@ -6,10 +6,11 @@ ARCHIVE="gigastt-${VERSION}-aarch64-apple-darwin.tar.gz"
 URL="https://github.com/ekhodzitsky/gigastt/releases/download/v${VERSION}/${ARCHIVE}"
 EXPECTED_SHA256="7c02bb78f5fc5086f63769d98f1729923bee726aa09deafa053ee2ae5efc6074"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN_DIR="${ROOT_DIR}/tools/bin"
-DOWNLOAD_DIR="${ROOT_DIR}/.cache/downloads"
-MODEL_DIR="${ROOT_DIR}/.models/gigastt"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKSPACE_DIR="$(cd "${APP_DIR}/.." && pwd)"
+BIN_DIR="${WORKSPACE_DIR}/tools/bin"
+DOWNLOAD_DIR="${WORKSPACE_DIR}/.cache/downloads"
+MODEL_DIR="${WORKSPACE_DIR}/.models/gigastt"
 
 mkdir -p "${BIN_DIR}" "${DOWNLOAD_DIR}" "${MODEL_DIR}"
 

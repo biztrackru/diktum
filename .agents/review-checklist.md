@@ -42,13 +42,13 @@ Use this checklist before merging or accepting agent work.
 For Python changes:
 
 ```bash
-.venv/bin/python -m compileall src
+.venv/bin/python -m compileall app/src
 ```
 
 For shell changes:
 
 ```bash
-zsh -n scripts/*.sh
+zsh -n app/scripts/*.sh
 ```
 
 For web changes:

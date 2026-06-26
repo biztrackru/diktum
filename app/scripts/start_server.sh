@@ -2,15 +2,18 @@
 
 set -u
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+WORKSPACE_DIR="$(cd "$APP_DIR/.." && pwd)"
 HOST="${VOICE_RECOGNIZER_HOST:-127.0.0.1}"
 PORT="${VOICE_RECOGNIZER_PORT:-8765}"
 OPEN_BROWSER="${VOICE_RECOGNIZER_OPEN_BROWSER:-1}"
 PAUSE_ON_EXIT="${VOICE_RECOGNIZER_PAUSE_ON_EXIT:-1}"
-CLI="$PROJECT_DIR/.venv/bin/voice-recognizer"
+PYTHON="$WORKSPACE_DIR/.venv/bin/python"
+INBOX_DIR="${VOICE_RECOGNIZER_INBOX:-inbox}"
+OUTPUT_DIR="${VOICE_RECOGNIZER_OUTPUT_DIR:-outputs/pipeline}"
 URL="http://$HOST:$PORT/"
 
-cd "$PROJECT_DIR" || exit 1
+cd "$WORKSPACE_DIR" || exit 1
 
 pause_before_close() {
   if [[ "$PAUSE_ON_EXIT" == "0" ]]; then
@@ -87,17 +90,23 @@ stop_port_owner() {
   fi
 }
 
-if [[ ! -x "$CLI" ]]; then
+if [[ ! -x "$PYTHON" ]]; then
   echo "Не найден исполняемый файл:"
-  echo "$CLI"
+  echo "$PYTHON"
   echo
-  echo "Проверьте, что виртуальное окружение создано и зависимости установлены."
+  echo "Проверьте, что виртуальное окружение создано. Следующий шаг:"
+  echo "  cd \"$WORKSPACE_DIR\""
+  echo "  python3 -m venv .venv"
+  echo "  .venv/bin/python -m pip install -e 'app[diarization]'"
   pause_before_close
   exit 1
 fi
 
+export PYTHONPATH="$APP_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+
 echo "Voice Recognizer"
-echo "Проект: $PROJECT_DIR"
+echo "Рабочая папка: $WORKSPACE_DIR"
+echo "Приложение:    $APP_DIR"
 echo "Адрес:  $URL"
 echo
 
@@ -146,7 +155,11 @@ echo
 if [[ "$OPEN_BROWSER" != "0" ]]; then
   (sleep 1; open_browser) &
 fi
-"$CLI" web --host "$HOST" --port "$PORT"
+"$PYTHON" -m voice_recognizer.cli web \
+  --host "$HOST" \
+  --port "$PORT" \
+  --inbox "$INBOX_DIR" \
+  --output-dir "$OUTPUT_DIR"
 exit_code=$?
 
 echo

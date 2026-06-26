@@ -31,7 +31,7 @@
 Задачи:
 
 - добавить `Setup Voice Recognizer.command`;
-- добавить `scripts/setup_local_mac.sh`;
+- добавить `app/scripts/setup_local_mac.sh`;
 - добавить local doctor/preflight report;
 - проверить Python, `.venv`, ffmpeg/ffprobe, GigaSTT binary, модели, HF token;
 - не печатать токены в лог;

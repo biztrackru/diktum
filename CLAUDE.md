@@ -47,8 +47,8 @@ If another agent has uncommitted changes in the same files, stop and ask for coo
 
 Use a clear write scope in your task. Good examples:
 
-- only `src/voice_recognizer/web.py`;
-- only `scripts/setup_local_mac.sh` and docs;
+- only `app/src/voice_recognizer/web.py`;
+- only `app/scripts/setup_local_mac.sh` and docs;
 - only `.agents/` docs.
 
 Bad examples:
@@ -71,14 +71,14 @@ If no critical issues are found, say so directly and list remaining risks.
 ## Useful commands
 
 ```bash
-.venv/bin/python -m compileall src
-zsh -n scripts/start_server.sh scripts/stop_server.sh scripts/setup_gigastt.sh
+.venv/bin/python -m compileall app/src
+zsh -n app/scripts/start_server.sh app/scripts/stop_server.sh app/scripts/setup_gigastt.sh
 git status --short --ignored
 ```
 
 For local UI testing, prefer a non-default port:
 
 ```bash
-VOICE_RECOGNIZER_PORT=8782 VOICE_RECOGNIZER_OPEN_BROWSER=0 VOICE_RECOGNIZER_PAUSE_ON_EXIT=0 scripts/start_server.sh
-VOICE_RECOGNIZER_PORTS=8782 VOICE_RECOGNIZER_PAUSE_ON_EXIT=0 scripts/stop_server.sh
+VOICE_RECOGNIZER_PORT=8782 VOICE_RECOGNIZER_OPEN_BROWSER=0 VOICE_RECOGNIZER_PAUSE_ON_EXIT=0 app/scripts/start_server.sh
+VOICE_RECOGNIZER_PORTS=8782 VOICE_RECOGNIZER_PAUSE_ON_EXIT=0 app/scripts/stop_server.sh
 ```

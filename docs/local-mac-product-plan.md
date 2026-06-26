@@ -29,15 +29,15 @@
 - Лендинг.
 - Полную SwiftUI/macOS-native перепись.
 
-## Предлагаемая структура без резкого переноса
+## Текущая структура
 
-Сейчас безопасно сохраняем такую структуру:
+Приложение отделено от рабочей зоны проекта:
 
 ```text
 Voice Recognizer/
-  src/voice_recognizer/     # код приложения
-  scripts/                  # setup/start/stop helpers
-  config/                   # проектные конфиги и примеры
+  app/src/voice_recognizer/     # код приложения
+  app/scripts/                  # setup/start/stop helpers
+  app/config/                   # проектные конфиги и примеры
   docs/                     # документация
   .agents/                  # координация AI-агентов
   Inbox/ или inbox/         # локальные аудио, не git
@@ -47,9 +47,9 @@ Voice Recognizer/
   .venv/                    # Python runtime, не git
 ```
 
-Код программы уже отделен от рабочих файлов в `src/voice_recognizer/`. Рабочие файлы агентов вынесены в `.agents/`.
+Код программы уже отделен от рабочих файлов в `app/src/voice_recognizer/`. Рабочие файлы агентов вынесены в `.agents/`.
 
-Физический перенос в будущую installable layout стоит делать отдельным шагом:
+Следующий возможный перенос в отдельную installable layout стоит делать отдельным шагом:
 
 ```text
 VoiceRecognizerLocal/
@@ -67,7 +67,7 @@ VoiceRecognizerLocal/
     models/
 ```
 
-Такой перенос затрагивает пути `.venv`, launchers, cache, outputs и документацию, поэтому его нельзя делать вперемешку с функциональными изменениями.
+Такой packaging-перенос затронет пути `.venv`, launchers, cache, outputs и документацию, поэтому его нужно делать отдельной миграцией.
 
 ## Setup UX
 
@@ -141,7 +141,7 @@ VoiceRecognizerLocal/
 
 Первый implementation scope:
 
-- добавить `scripts/setup_local_mac.sh`;
+- добавить `app/scripts/setup_local_mac.sh`;
 - добавить `Setup Voice Recognizer.command`;
 - добавить команду/скрипт `doctor`;
 - сделать человекочитаемый отчет окружения;

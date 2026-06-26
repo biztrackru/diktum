@@ -7,8 +7,8 @@ Read:
 - `docs/product-requirements.md`
 - `docs/implementation-plan.md`
 - `docs/local-mac-product-plan.md`
-- `scripts/start_server.sh`
-- `scripts/setup_gigastt.sh`
+- `app/scripts/start_server.sh`
+- `app/scripts/setup_gigastt.sh`
 
 Task:
 

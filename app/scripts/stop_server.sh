@@ -2,11 +2,12 @@
 
 set -u
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+WORKSPACE_DIR="$(cd "$APP_DIR/.." && pwd)"
 PORTS_TEXT="${VOICE_RECOGNIZER_PORTS:-8765 8766}"
 PAUSE_ON_EXIT="${VOICE_RECOGNIZER_PAUSE_ON_EXIT:-1}"
 
-cd "$PROJECT_DIR" || exit 1
+cd "$WORKSPACE_DIR" || exit 1
 
 pause_before_close() {
   if [[ "$PAUSE_ON_EXIT" == "0" ]]; then
@@ -46,7 +47,8 @@ process_pids=()
 still_running=()
 
 echo "Voice Recognizer: остановка серверов"
-echo "Проект: $PROJECT_DIR"
+echo "Рабочая папка: $WORKSPACE_DIR"
+echo "Приложение:    $APP_DIR"
 echo
 
 local_port=""

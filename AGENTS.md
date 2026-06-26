@@ -22,9 +22,9 @@ Voice Recognizer - приватный local-first продукт для macOS, �
 
 ## Структура проекта
 
-- `src/voice_recognizer/` - код приложения и pipeline.
-- `scripts/` - запуск, остановка и установка runtime/model helpers.
-- `config/` - примерные/проектные конфиги. Персональные конфиги должны быть local-only.
+- `app/src/voice_recognizer/` - код приложения и pipeline.
+- `app/scripts/` - запуск, остановка и установка runtime/model helpers.
+- `app/config/` - примерные/проектные конфиги. Персональные конфиги должны быть local-only.
 - `docs/` - документация продукта, архитектуры и исследований.
 - `.agents/` - координация AI-агентов, task board, промпты, приемка.
 - `Inbox/` и `inbox/` - локальные пользовательские аудиофайлы, не коммитить.
@@ -93,7 +93,7 @@ Self-host/Docker/Cloud отложены до отдельного будущег
 Минимум для Python-изменений:
 
 ```bash
-.venv/bin/python -m compileall src
+.venv/bin/python -m compileall app/src
 ```
 
 Для web UI изменений:
@@ -105,7 +105,7 @@ Self-host/Docker/Cloud отложены до отдельного будущег
 
 Для launcher/setup изменений:
 
-- проверить `zsh -n scripts/*.sh`;
+- проверить `zsh -n app/scripts/*.sh`;
 - проверить сценарии: свободный порт, занятый порт, остановка сервера.
 
 ## Definition of Done

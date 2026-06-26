@@ -4,7 +4,7 @@ This directory contains coordination files for Codex, Claude Code, and future re
 
 It is intentionally separate from application code. Agents can write planning, task ownership, handoff notes, and review prompts here without mixing them into the installable product surface.
 
-Application code remains in `src/voice_recognizer/`.
+Application code remains in `app/src/voice_recognizer/`.
 
 Current coordination files:
 

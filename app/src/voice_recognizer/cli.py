@@ -116,9 +116,10 @@ def _clip_suffix(start: float | None, duration: float | None) -> str:
 
 
 def _load_speaker_config(path: Path | None) -> dict[str, dict[str, object]]:
-    if path is None or not path.exists():
+    resolved_path = _resolve_speaker_config_path(path)
+    if resolved_path is None:
         return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(resolved_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         return {}
     return {
@@ -126,6 +127,21 @@ def _load_speaker_config(path: Path | None) -> dict[str, dict[str, object]]:
         for key, value in payload.items()
         if isinstance(value, dict)
     }
+
+
+def _resolve_speaker_config_path(path: Path | None) -> Path | None:
+    if path is not None:
+        return path if path.exists() else None
+    app_dir = Path(__file__).resolve().parents[2]
+    candidates = (
+        Path("config/speaker-counts.json"),
+        Path("app/config/speaker-counts.json"),
+        app_dir / "config" / "speaker-counts.json",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _speaker_settings_for_source(
@@ -788,7 +804,7 @@ def process_file(
     source: Path = typer.Argument(..., exists=True, readable=True),
     output_dir: Path = typer.Option(Path("outputs/pipeline"), "--output-dir", "-o"),
     cache_dir: Path = typer.Option(Path(".cache/audio"), "--cache-dir"),
-    speaker_config_path: Path | None = typer.Option(Path("config/speaker-counts.json"), "--speaker-config"),
+    speaker_config_path: Path | None = typer.Option(None, "--speaker-config"),
     model_dir: Path = typer.Option(Path(".models/gigastt"), "--model-dir"),
     punct_model_dir: Path = typer.Option(Path(".models/gigastt/punct"), "--punct-model-dir"),
     gigastt_bin: Path = typer.Option(Path("tools/bin/gigastt"), "--gigastt-bin"),
@@ -880,7 +896,7 @@ def batch_process(
     input_dir: Path = typer.Argument(..., exists=True, file_okay=False, readable=True),
     output_dir: Path = typer.Option(Path("outputs/pipeline-batch"), "--output-dir", "-o"),
     cache_dir: Path = typer.Option(Path(".cache/audio"), "--cache-dir"),
-    speaker_config_path: Path | None = typer.Option(Path("config/speaker-counts.json"), "--speaker-config"),
+    speaker_config_path: Path | None = typer.Option(None, "--speaker-config"),
     model_dir: Path = typer.Option(Path(".models/gigastt"), "--model-dir"),
     punct_model_dir: Path = typer.Option(Path(".models/gigastt/punct"), "--punct-model-dir"),
     gigastt_bin: Path = typer.Option(Path("tools/bin/gigastt"), "--gigastt-bin"),
@@ -1051,7 +1067,7 @@ def check_pyannote_access(
         from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
     except ImportError as error:
         raise typer.BadParameter(
-            "huggingface_hub is not installed. Run: .venv/bin/python -m pip install -e '.[diarization]'"
+            "huggingface_hub is not installed. Run: .venv/bin/python -m pip install -e 'app[diarization]'"
         ) from error
 
     token = resolve_hf_token(hf_token_env)

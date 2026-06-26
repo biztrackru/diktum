@@ -68,9 +68,9 @@
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e '.[diarization]'
-scripts/setup_gigastt.sh
-cp .env.example .env
+.venv/bin/python -m pip install -e 'app[diarization]'
+app/scripts/setup_gigastt.sh
+cp app/.env.example .env
 ```
 
 В `.env` нужно добавить Hugging Face token с доступом к `pyannote/speaker-diarization-community-1`:
@@ -263,7 +263,7 @@ set +a
 
 Команда создает отдельные `.gigastt.json`, `.pyannote.json` и `.transcript.md` для каждого файла, а также общий `batch_index.md`.
 
-Известное число спикеров для тестовых файлов зафиксировано в `config/speaker-counts.json`.
+Известное число спикеров для тестовых файлов зафиксировано в `app/config/speaker-counts.json`.
 
 Локальный web-интерфейс:
 
@@ -334,7 +334,7 @@ Web UI уже показывает поле `ASR-движок`: рабочий �
 - GigaSTT не принимает один аудиофайл длиннее примерно 2 часов. Pipeline автоматически режет ASR для таких записей на чанки по умолчанию до 3600 секунд, сохраняет `*.part-XXX.gigastt.json` и собирает общий `*.gigastt.json` с глобальными таймкодами. Размер можно изменить через `--asr-chunk-seconds`.
 - Пунктуация на границах ASR-чанков может быть чуть менее аккуратной. Если понадобится редакторская полировка больших обучений, следующий шаг — LLM-постобработка через LM Studio.
 - Сглаживание speaker-islands повышает читабельность, но иногда может поглотить короткую настоящую реплику вроде “да” или “угу”. Raw `.pyannote.json` сохраняется отдельно, а сглаживание можно выключить.
-- Для многоспикерных обучений лучше задавать границы в `config/speaker-counts.json`: `num_speakers`, либо `min_speakers`/`max_speakers`.
+- Для многоспикерных обучений лучше задавать границы в `app/config/speaker-counts.json`: `num_speakers`, либо `min_speakers`/`max_speakers`.
 - Сейчас экспорт основной — Markdown/TXT; DOCX можно добавить поверх уже сохраненных структурированных JSON.
 
 ## Этапы
