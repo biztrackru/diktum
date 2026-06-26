@@ -161,6 +161,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             self._send_json(result)
             return
 
+        if parsed.path.startswith("/api/results/") and parsed.path.endswith("/rerun"):
+            result_id = parsed.path.removeprefix("/api/results/").removesuffix("/rerun").strip("/")
+            try:
+                job = _create_result_rerun_job(result_id, self.web_config.root)
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            with JOBS_LOCK:
+                JOBS[job.id] = job
+            _enqueue_job(job.id, self.web_config.root)
+            self._send_json(_job_payload(job, self.web_config.root), status=HTTPStatus.CREATED)
+            return
+
         if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/speaker-names"):
             job_id = parsed.path.removeprefix("/api/jobs/").removesuffix("/speaker-names").strip("/")
             try:
@@ -2177,7 +2190,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
       </div>`;
       resultDetails.innerHTML = `
-        <div class="result-meta">${{jobBadges(job)}}</div>
+        <div class="result-meta">${{jobBadges(job)}}${{renderRerunAction(job)}}</div>
         ${{renderResultTabs(activeTab)}}
         <section class="result-panel" data-result-panel="overview" ${{activeTab === "overview" ? "" : "hidden"}}>
           ${{renderResultOverview(job, files, samples)}}
@@ -2197,6 +2210,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       wireResultTabs(job);
       wireTranscriptControls(job, files);
       loadTranscriptPreview(job, files);
+      wireRerunAction(job);
       const applyButton = document.querySelector("#apply-speaker-names");
       if (applyButton) {{
         applyButton.addEventListener("click", async () => {{
@@ -2248,6 +2262,41 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       wireSpeakerNameInputs();
       restoreSpeakerFocus(focusState);
+    }}
+
+    function renderRerunAction(job) {{
+      if (!job.is_disk_result || sourceFreshnessStatus(job) !== "changed") return "";
+      return `<button class="btn primary" id="rerun-result" type="button" title="Пересчитать этот результат в ту же папку">Обновить результат</button>`;
+    }}
+
+    function wireRerunAction(job) {{
+      const button = document.querySelector("#rerun-result");
+      if (!button) return;
+      button.addEventListener("click", async () => {{
+        button.disabled = true;
+        setLogText("Ставлю обновление результата в очередь...\\n", {{ forceBottom: true }});
+        try {{
+          const response = await fetch(`/api/results/${{job.id}}/rerun`, {{
+            method: "POST",
+            headers: {{ "Content-Type": "application/json" }},
+            body: JSON.stringify({{}}),
+          }});
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "request failed");
+          activeView = "job";
+          activeJobId = payload.id;
+          activeResultId = null;
+          renderedResultKey = null;
+          setStatusBadge(activeJobNode, statusClass(payload.status), statusLabel(payload.status));
+          setStatusBadge(resultState, statusClass(payload.status), statusLabel(payload.status));
+          setLogText((payload.log || []).join(""), {{ forceBottom: true }});
+          await loadJobs();
+          await loadResults();
+        }} catch (error) {{
+          logNode.textContent = String(error);
+          button.disabled = false;
+        }}
+      }});
     }}
 
     function resultTab(jobId) {{
@@ -3313,6 +3362,33 @@ def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) 
         raise ValueError("result manifest disappeared")
     payload["log"] = process.stdout.splitlines(keepends=True)[-MAX_LOG_LINES:]
     return payload
+
+
+def _create_result_rerun_job(result_id: str, root: Path) -> Job:
+    manifest_path = _find_result_manifest(result_id, root)
+    manifest = _read_manifest(manifest_path)
+    if not manifest:
+        raise ValueError("result manifest disappeared")
+    source_path = _manifest_source_path(manifest, root)
+    start, duration = _clip_window_from_manifest_path(manifest_path)
+    asr_engine = normalize_asr_engine(str(manifest.get("asr_engine") or DEFAULT_ASR_ENGINE))
+    device = str(manifest.get("device") or "auto")
+    speaker_names = _speaker_names_payload_to_cli(manifest.get("speaker_names"))
+    return _create_job(
+        source=source_path,
+        output_dir=manifest_path.parent,
+        start=start,
+        duration=duration,
+        device=device,
+        asr_engine=asr_engine,
+        speaker_mode="auto",
+        num_speakers=None,
+        min_speakers=None,
+        max_speakers=None,
+        speaker_names=speaker_names,
+        overwrite=True,
+        root=root,
+    )
 
 
 def _manifest_source_freshness(

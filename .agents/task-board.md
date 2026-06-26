@@ -297,6 +297,29 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: page loads, console clean, 15 results render, result overview shows `Исходник — исходник свежий`;
 - mobile viewport 390px: no horizontal overflow, Inbox freshness tooltips remain readable.
 
+### Implementation Rerun Stale Result
+
+Status: DELIVERED (2026-06-27), Codex. Let users refresh a stale disk-backed result from the UI.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Rerun Stale Result` block in `.agents/task-board.md`
+
+Goal:
+
+- add a safe rerun endpoint for `outputs/**/*.manifest.json` results;
+- reuse the result source, clip window, ASR engine, output directory and existing speaker names where available;
+- show an update action for changed-source results without starting expensive work accidentally.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- backend smoke with `PYTHONPATH=app/src`: `_create_result_rerun_job` preserves source/output/clip, adds `--overwrite`, and keeps existing speaker names;
+- in-app Browser on `http://127.0.0.1:8782/` with a temporary ignored stale manifest: page loads, console clean, stale result shows `обновить`, opening it shows active `Обновить результат`;
+- mobile viewport 390px: no horizontal overflow and rerun action remains visible;
+- temporary smoke source/result files removed and test server stopped.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
