@@ -190,6 +190,27 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: batch mode exposes 5 checkboxes, `Все` selects all, `Ни одного` disables run, row click toggles one file and updates `4 из 5 выбрано`, console clean;
 - mobile viewport 390px: no horizontal overflow.
 
+### Implementation Disk Speaker Names
+
+Status: DELIVERED (2026-06-26), Codex. Extend speaker labeling to disk-backed results.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Disk Speaker Names` block in `.agents/task-board.md`
+
+Goal:
+
+- allow applying speaker names to results opened from `outputs/**/*.manifest.json`;
+- reuse existing ASR/diarization artifacts via CLI `--skip-existing`;
+- refresh the result library and Inbox badges after applying names.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- backend smoke: `_apply_result_speaker_names` updates a short disk result and logs `Using ASR JSON` + `Using diarization JSON`;
+- in-app Browser on `http://127.0.0.1:8782/`: disk result opens, speaker name input applies via `POST /api/results/<id>/speaker-names`, label updates, console clean.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

@@ -148,6 +148,18 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             self._send_json({"files": files}, status=HTTPStatus.CREATED)
             return
 
+        if parsed.path.startswith("/api/results/") and parsed.path.endswith("/speaker-names"):
+            result_id = parsed.path.removeprefix("/api/results/").removesuffix("/speaker-names").strip("/")
+            try:
+                payload = self._read_json_body()
+                speaker_names = _speaker_names_payload_to_cli(payload.get("speaker_names"))
+                result = _apply_result_speaker_names(result_id, speaker_names, self.web_config.root)
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+            return
+
         if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/speaker-names"):
             job_id = parsed.path.removeprefix("/api/jobs/").removesuffix("/speaker-names").strip("/")
             try:
@@ -1953,11 +1965,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             <input class="speaker-name-input" data-job="${{escapeAttribute(job.id)}}" data-speaker="${{escapeAttribute(sample.speaker)}}" value="${{escapeAttribute(speakerNameValue(job, sample))}}" placeholder="Имя спикера ${{sample.speaker}}">
           </div>`).join("")
         : '<div class="empty">Voice samples пока не найдены</div>';
-      const speakerActions = job.is_disk_result
-        ? '<div class="empty">Результат открыт из outputs. Переименование спикеров без пересчёта добавим отдельным шагом.</div>'
-        : `<div class="actions">
-            <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
-          </div>`;
+      const speakerActions = `<div class="actions">
+        <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
+      </div>`;
       resultDetails.innerHTML = `
         <div class="result-meta">${{jobBadges(job)}}</div>
         ${{fileLinks}}
@@ -1975,17 +1985,37 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           }});
           applyButton.disabled = true;
           try {{
-            const response = await fetch(`/api/jobs/${{job.id}}/speaker-names`, {{
+            const endpoint = job.is_disk_result
+              ? `/api/results/${{job.id}}/speaker-names`
+              : `/api/jobs/${{job.id}}/speaker-names`;
+            const response = await fetch(endpoint, {{
               method: "POST",
               headers: {{ "Content-Type": "application/json" }},
               body: JSON.stringify({{ speaker_names: names }}),
             }});
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || "request failed");
-            activeJobId = payload.id;
             clearSpeakerNameDrafts(job.id);
             renderedResultKey = null;
-            await loadJobs();
+            if (payload.is_disk_result) {{
+              activeView = "result";
+              activeResultId = payload.id;
+              const index = diskResults.findIndex((item) => item.id === payload.id);
+              if (index >= 0) {{
+                diskResults[index] = payload;
+              }} else {{
+                diskResults.unshift(payload);
+              }}
+              renderResultList();
+              setStatusBadge(activeJobNode, "done", "готовый");
+              setStatusBadge(resultState, statusClass(payload.status), statusLabel(payload.status));
+              setLogText((payload.log || []).join(""), {{ forceBottom: true }});
+              renderResults(payload, {{ force: true }});
+              await loadInbox();
+            }} else {{
+              activeJobId = payload.id;
+              await loadJobs();
+            }}
           }} catch (error) {{
             logNode.textContent = String(error);
           }} finally {{
@@ -2702,6 +2732,13 @@ def _clip_window_from_manifest_path(manifest_path: Path) -> tuple[float | None, 
     return start, duration
 
 
+def _find_result_manifest(result_id: str, root: Path) -> Path:
+    for manifest_path in (root / "outputs").resolve().glob("**/*.manifest.json"):
+        if _result_id(manifest_path, root) == result_id:
+            return manifest_path
+    raise ValueError("result not found")
+
+
 def _job_list(root: Path) -> list[dict[str, object]]:
     with JOBS_LOCK:
         jobs = sorted(JOBS.values(), key=lambda item: item.created_at, reverse=True)
@@ -2798,6 +2835,72 @@ def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
         if process.returncode != 0:
             job.log.append(f"Apply names exited with code {process.returncode}\n")
         return job
+
+
+def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) -> dict[str, object]:
+    manifest_path = _find_result_manifest(result_id, root)
+    manifest = _read_manifest(manifest_path)
+    source_path = _manifest_source_path(manifest, root)
+    start, duration = _clip_window_from_manifest_path(manifest_path)
+    asr_engine = normalize_asr_engine(str(manifest.get("asr_engine") or DEFAULT_ASR_ENGINE))
+    device = str(manifest.get("device") or "auto")
+    command = [
+        sys.executable,
+        "-m",
+        "voice_recognizer.cli",
+        "process",
+        _cli_path(root, source_path),
+        "--output-dir",
+        _cli_path(root, manifest_path.parent),
+        "--asr-engine",
+        asr_engine,
+        "--device",
+        device,
+        "--speaker-names",
+        speaker_names,
+    ]
+    if start is not None:
+        command.extend(["--start", str(start)])
+    if duration is not None:
+        command.extend(["--duration", str(duration)])
+
+    env = os.environ.copy()
+    env.update(_read_dotenv(root / ".env"))
+    env.setdefault("COLUMNS", "180")
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+    process = subprocess.run(
+        command,
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if process.returncode != 0:
+        raise ValueError(f"apply speaker names failed with exit code {process.returncode}: {process.stdout[-2000:]}")
+    payload = _result_payload(manifest_path, root)
+    if payload is None:
+        raise ValueError("result manifest disappeared")
+    payload["log"] = process.stdout.splitlines(keepends=True)[-MAX_LOG_LINES:]
+    return payload
+
+
+def _manifest_source_path(manifest: dict[str, object], root: Path) -> Path:
+    raw_source = str(manifest.get("source") or "").strip()
+    if not raw_source:
+        raise ValueError("result manifest does not include source")
+    path = Path(raw_source)
+    if not path.is_absolute():
+        path = root / path
+    path = path.resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError as error:
+        raise ValueError("result source must stay inside project") from error
+    if not path.exists():
+        raise ValueError("result source file not found")
+    return path
 
 
 def _resolve_source(inbox: Path, source_name: str) -> Path:
