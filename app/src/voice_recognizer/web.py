@@ -268,6 +268,24 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     button {{
       color: inherit;
     }}
+    @media (prefers-reduced-motion: no-preference) {{
+      .btn,
+      .segment,
+      .preset-button,
+      .file-row,
+      .job-row,
+      .result-row,
+      .link-chip,
+      .badge {{
+        transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+      }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      * {{
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }}
+    }}
     .shell {{
       min-height: 100vh;
       display: grid;
@@ -347,6 +365,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-size: 12px;
       font-weight: 720;
     }}
+    .workflow-step.done {{
+      color: var(--accent);
+    }}
+    .workflow-step.active {{
+      color: var(--text);
+    }}
+    .workflow-step.failed {{
+      color: var(--danger);
+    }}
     .step-index {{
       width: 20px;
       height: 20px;
@@ -357,6 +384,18 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       color: var(--accent);
       font-size: 11px;
       font-weight: 800;
+    }}
+    .workflow-step.done .step-index {{
+      background: var(--accent);
+      color: #fff;
+    }}
+    .workflow-step.active .step-index {{
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 3px rgba(11, 127, 114, 0.1);
+    }}
+    .workflow-step.failed .step-index {{
+      background: rgba(180, 35, 24, 0.1);
+      color: var(--danger);
     }}
     main {{
       display: grid;
@@ -662,6 +701,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       border-color: var(--accent);
       background: var(--accent-soft);
     }}
+    .file-row:hover,
+    .job-row:hover,
+    .result-row:hover,
+    .link-chip:hover {{
+      background: var(--surface-2);
+    }}
     .queue-summary {{
       display: flex;
       flex-wrap: wrap;
@@ -845,7 +890,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       display: grid;
       gap: 5px;
       min-width: 0;
-      color: var(--soft);
+      color: var(--muted);
       font-size: 10px;
       line-height: 1.2;
       font-weight: 760;
@@ -1023,11 +1068,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       </div>
     </header>
     <nav class="workflow" aria-label="Workflow">
-      <span class="workflow-step"><span class="step-index">1</span>Inbox</span>
-      <span class="workflow-step"><span class="step-index">2</span>Настройки</span>
-      <span class="workflow-step"><span class="step-index">3</span>Очередь</span>
-      <span class="workflow-step"><span class="step-index">4</span>Спикеры</span>
-      <span class="workflow-step"><span class="step-index">5</span>Экспорт</span>
+      <span class="workflow-step active" data-workflow-step="0"><span class="step-index">1</span>Inbox</span>
+      <span class="workflow-step" data-workflow-step="1"><span class="step-index">2</span>Настройки</span>
+      <span class="workflow-step" data-workflow-step="2"><span class="step-index">3</span>Очередь</span>
+      <span class="workflow-step" data-workflow-step="3"><span class="step-index">4</span>Спикеры</span>
+      <span class="workflow-step" data-workflow-step="4"><span class="step-index">5</span>Экспорт</span>
     </nav>
     <main>
       <aside class="sidebar">
@@ -1045,7 +1090,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               </label>
               <div class="actions">
                 <button class="btn full" id="upload-button" type="submit">Добавить в Inbox</button>
-                <span class="badge" id="upload-status">готово</span>
+                <span class="badge" id="upload-status" aria-live="polite">готово</span>
               </div>
             </form>
             <label>Источник
@@ -1148,11 +1193,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             <div class="panel-title">
               <h2>Очередь</h2>
             </div>
-            <div class="queue-summary">
+            <div class="queue-summary" aria-live="polite">
               <span class="badge" id="job-count">0</span>
-              <span class="badge queued" id="queued-count">0 queued</span>
-              <span class="badge running" id="running-count">0 running</span>
-              <span class="badge done" id="done-count">0 done</span>
+              <span class="badge queued" id="queued-count">0 ожидает</span>
+              <span class="badge running" id="running-count">0 выполняется</span>
+              <span class="badge done" id="done-count">0 готово</span>
             </div>
           </div>
           <div class="job-list" id="jobs"><div class="empty">Нет задач</div></div>
@@ -1169,7 +1214,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         <section class="panel">
           <div class="panel-head">
             <h2>Журнал</h2>
-            <span class="badge" id="active-job">-</span>
+            <span class="badge" id="active-job" aria-live="polite">-</span>
           </div>
           <pre id="log"></pre>
         </section>
@@ -1179,9 +1224,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         <section class="panel">
           <div class="panel-head">
             <h2>Проверка и экспорт</h2>
-            <span class="badge" id="result-state">-</span>
+            <span class="badge" id="result-state" aria-live="polite">-</span>
           </div>
-          <div class="result-body" id="result-details"><div class="empty">Нет выбранной задачи</div></div>
+          <div class="result-body" id="result-details" aria-live="polite"><div class="empty">Нет выбранной задачи</div></div>
         </section>
       </section>
     </main>
@@ -1210,6 +1255,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const resultState = document.querySelector("#result-state");
     const runModeLabel = document.querySelector("#run-mode-label");
     const modeButtons = document.querySelectorAll(".segment[data-mode]");
+    const workflowSteps = document.querySelectorAll(".workflow-step[data-workflow-step]");
     const clipTools = document.querySelector("#clip-tools");
     const presetButtons = document.querySelectorAll(".preset-button[data-duration]");
     const speakerModeLabel = document.querySelector("#speaker-mode-label");
@@ -1255,6 +1301,32 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         speakerInputs.exact.form.elements.duration.value = "2:00";
       }}
       if (runMode === "batch") setSpeakerMode("auto");
+      if (activeView !== "job" || !activeJobId) updateWorkflow();
+    }}
+
+    function updateWorkflow(job = null, options = {{}}) {{
+      let activeIndex = sourceSelect.value ? 1 : 0;
+      let failed = false;
+      if (options.view === "result" || activeView === "result") {{
+        activeIndex = 4;
+      }} else if (job) {{
+        failed = job.status === "failed";
+        if (job.status === "done") {{
+          activeIndex = 4;
+        }} else if (job.status === "queued") {{
+          activeIndex = 2;
+        }} else if (currentStageIndex(job) >= 2) {{
+          activeIndex = 3;
+        }} else {{
+          activeIndex = 2;
+        }}
+      }}
+      workflowSteps.forEach((step) => {{
+        const index = Number(step.dataset.workflowStep || 0);
+        step.classList.toggle("done", index < activeIndex && !failed);
+        step.classList.toggle("active", index === activeIndex && !failed);
+        step.classList.toggle("failed", index === activeIndex && failed);
+      }});
     }}
 
     function setSpeakerMode(mode) {{
@@ -1336,11 +1408,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       sourceSelect.value = row.dataset.file;
       setRunMode("single");
       syncFileSelection();
+      updateWorkflow();
     }});
 
     sourceSelect.addEventListener("change", () => {{
       setRunMode("single");
       syncFileSelection();
+      updateWorkflow();
     }});
     modeButtons.forEach((button) => {{
       button.addEventListener("click", () => setRunMode(button.dataset.mode));
@@ -1493,6 +1567,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       runButton.disabled = !hasFiles;
       queueAllButton.disabled = !hasFiles;
       syncFileSelection();
+      updateWorkflow();
     }}
 
     function renderInboxFile(file) {{
@@ -1549,6 +1624,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           logNode.textContent = "";
           setStatusBadge(activeJobNode, "", "-");
           renderedResultKey = null;
+          updateWorkflow();
         }}
         return;
       }}
@@ -1560,8 +1636,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (activeView !== "result") {{
         setStatusBadge(activeJobNode, statusClass(active.status), statusLabel(active.status));
         setStatusBadge(resultState, statusClass(active.status), statusLabel(active.status));
-        logNode.textContent = active.log.join("");
-        logNode.scrollTop = logNode.scrollHeight;
+        setLogText(active.log.join(""));
+        updateWorkflow(active);
         renderResults(active, {{ force: active.id !== previousActiveJobId }});
       }}
       document.querySelectorAll(".job-row").forEach((row) => {{
@@ -1626,9 +1702,22 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       renderedResultKey = null;
       setStatusBadge(activeJobNode, "done", "готовый");
       setStatusBadge(resultState, statusClass(result.status), statusLabel(result.status));
-      logNode.textContent = (result.log || []).join("");
+      setLogText((result.log || []).join(""), {{ forceBottom: true }});
+      updateWorkflow(result, {{ view: "result" }});
       renderResultList();
       renderResults(result, {{ force: true }});
+    }}
+
+    function setLogText(text, options = {{}}) {{
+      const shouldFollow = options.forceBottom || isLogNearBottom();
+      if (logNode.textContent !== text) {{
+        logNode.textContent = text;
+      }}
+      if (shouldFollow) logNode.scrollTop = logNode.scrollHeight;
+    }}
+
+    function isLogNearBottom() {{
+      return logNode.scrollHeight - logNode.scrollTop - logNode.clientHeight < 32;
     }}
 
     function updateQueueSummary(jobs) {{

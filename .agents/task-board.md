@@ -148,6 +148,27 @@ Checks:
 - API smoke with `PYTHONPATH=app/src`: Inbox files include duration/format/modified metadata;
 - Chrome/Playwright on `http://127.0.0.1:8782/`: test-fragment mode and presets work, status labels are localized, export groups render, `mm:ss` parser works, console clean, desktop/mobile no horizontal overflow.
 
+### Implementation F9/F14
+
+Status: DELIVERED (2026-06-26), Codex. UX polish portion from `.agents/next-task-ux-implementation.md`.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation F9/F14` block in `.agents/task-board.md`
+
+Goal:
+
+- F9: reduce polling churn where it affects reading/focus, especially log scroll;
+- F10: add polite status announcements and alert semantics for failures;
+- F12: make workflow step labels reflect the current active stage instead of staying decorative;
+- F13/F14: keep muted text readable and add restrained transitions with reduced-motion support.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- Chrome/Playwright on `http://127.0.0.1:8782/`: workflow moves from settings to export, status regions expose `aria-live=polite`, log no longer auto-scrolls when reading from top, console clean, desktop/mobile no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
