@@ -2356,6 +2356,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         ["Источник", job.source_name || "-"],
         ["ASR", job.asr_engine || "не указан"],
         ["Спикеры", `${{samples.length || job.num_speakers || 0}}`],
+        ["Обработано", formatDateTime(job.completed_at)],
+        ["Окно", clipLabel(job)],
+        ["Распознано", resultDurationLabel(job)],
         ["Файлы", `${{files.length}} экспортов`],
         ["Папка", job.output_dir || "outputs"],
         ["Тип", resultKindLabel(job.kind)],
@@ -2562,6 +2565,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const label = sourceFreshnessLabel(result);
       const path = result?.source_path ? ` · ${{result.source_path}}` : "";
       return `${{label}}${{path}}`;
+    }}
+
+    function resultDurationLabel(job) {{
+      if (job.recording_duration !== null && job.recording_duration !== undefined) {{
+        return formatDuration(job.recording_duration);
+      }}
+      if (job.duration !== null && job.duration !== undefined) {{
+        return formatDuration(job.duration);
+      }}
+      return "-";
     }}
 
     function resultKindLabel(kind) {{

@@ -366,6 +366,28 @@ Checks:
 - source freshness smoke: unchanged v2 source is `fresh`, size-changed source becomes `changed`;
 - legacy manifest smoke: old filename-based clip fallback still returns `5.0 / 10.0`.
 
+### Implementation Result Overview Metadata
+
+Status: DELIVERED (2026-06-27), Codex. Surface manifest run metadata in the result overview.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Result Overview Metadata` block in `.agents/task-board.md`
+
+Goal:
+
+- show processing date, clip window and recognized audio duration in the overview tab;
+- use existing formatting helpers and keep old manifests readable;
+- verify desktop/mobile rendering with the in-app browser.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- in-app Browser on `http://127.0.0.1:8782/`: opened a result, switched to `Обзор`, saw `Обработано`, `Окно`, `Распознано`, console clean;
+- mobile viewport 390px: same overview fields render, no horizontal overflow;
+- test server stopped.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
