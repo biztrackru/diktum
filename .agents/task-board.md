@@ -126,6 +126,28 @@ Checks:
 - API smoke with `PYTHONPATH=app/src`: 15 disk results found, 5 Inbox files marked processed;
 - Chrome/Playwright on `http://127.0.0.1:8782/`: results library renders, Inbox processed badge opens a result, export link returns `200`, console clean, desktop/mobile no horizontal overflow.
 
+### Implementation F5/F8
+
+Status: DELIVERED (2026-06-26), Codex. UX implementation portion 4 from `.agents/next-task-ux-implementation.md`.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation F5/F8` block in `.agents/task-board.md`
+
+Goal:
+
+- F5: localize user-facing job/status labels;
+- F6: add a test-fragment run mode with mm:ss parsing and presets;
+- F7: show practical Inbox metadata such as duration, format and modified time;
+- F8: group export files by user intent.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- API smoke with `PYTHONPATH=app/src`: Inbox files include duration/format/modified metadata;
+- Chrome/Playwright on `http://127.0.0.1:8782/`: test-fragment mode and presets work, status labels are localized, export groups render, `mm:ss` parser works, console clean, desktop/mobile no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

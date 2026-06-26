@@ -26,6 +26,7 @@ JOBS: dict[str, "Job"] = {}
 JOB_QUEUE: list[str] = []
 JOBS_LOCK = threading.Lock()
 WORKER_THREAD: threading.Thread | None = None
+MEDIA_METADATA_CACHE: dict[tuple[str, int, int], dict[str, object]] = {}
 
 
 @dataclass(frozen=True)
@@ -205,7 +206,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             f"""
             <button class="file-row" type="button" data-file="{html.escape(path.name)}">
               <span class="file-main">
-                <span class="file-name">{html.escape(path.name)}</span>
+                <span class="file-title">
+                  <span class="file-name">{html.escape(path.name)}</span>
+                </span>
+                <span class="file-subline">
+                  <span>{html.escape(path.suffix.upper().lstrip('.') or 'AUDIO')}</span>
+                  <span>{html.escape(_modified_label(path))}</span>
+                </span>
               </span>
               <span class="file-size">{_file_size_label(path)}</span>
             </button>
@@ -430,6 +437,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
     .btn:focus-visible,
     .segment:focus-visible,
+    .preset-button:focus-visible,
     .file-row:focus-visible,
     .job-row:focus-visible,
     .result-row:focus-visible,
@@ -500,6 +508,32 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
     .speaker-segmented {{
       grid-template-columns: 1.25fr 0.8fr 1fr;
+    }}
+    .run-segmented {{
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }}
+    .clip-tools {{
+      display: grid;
+      gap: 8px;
+    }}
+    .clip-tools[hidden] {{
+      display: none;
+    }}
+    .preset-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+    .preset-button {{
+      min-height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--accent);
+      padding: 0 9px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 780;
     }}
     .actions {{
       display: flex;
@@ -575,6 +609,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
     .file-main {{
       min-width: 0;
+      display: grid;
+      gap: 4px;
+    }}
+    .file-title {{
+      min-width: 0;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -592,6 +631,20 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-size: 12px;
       font-weight: 650;
       white-space: nowrap;
+    }}
+    .file-subline {{
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }}
+    .file-subline span:not(:last-child)::after {{
+      content: "·";
+      margin-left: 5px;
+      color: var(--border-strong);
     }}
     .processed-tag {{
       flex: 0 0 auto;
@@ -843,18 +896,40 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       flex-wrap: wrap;
       gap: 8px;
     }}
+    .export-groups {{
+      display: grid;
+      gap: 12px;
+    }}
+    .export-group {{
+      display: grid;
+      gap: 7px;
+    }}
+    .export-group-title {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+      font-weight: 800;
+    }}
     .link-chip {{
       display: inline-flex;
-      align-items: center;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 2px;
       min-height: 32px;
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 0 10px;
+      padding: 7px 10px;
       color: var(--accent);
       background: #fff;
       text-decoration: none;
       font-size: 13px;
       font-weight: 760;
+    }}
+    .link-chip small {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
     }}
     .speaker-editor {{
       display: grid;
@@ -991,17 +1066,25 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               <span class="badge" id="run-mode-label">один файл</span>
             </div>
             <div class="section-body">
-              <div class="segmented" role="group" aria-label="Режим обработки">
+              <div class="segmented run-segmented" role="group" aria-label="Режим обработки">
                 <button class="segment active" id="mode-single" type="button" data-mode="single">Один файл</button>
+                <button class="segment" id="mode-clip" type="button" data-mode="clip">Тест-фрагмент</button>
                 <button class="segment" id="mode-batch" type="button" data-mode="batch">Весь Inbox</button>
               </div>
               <div class="grid-2">
-                <label>Старт, сек
-                  <input name="start" inputmode="decimal" placeholder="0">
+                <label>Старт
+                  <input name="start" inputmode="decimal" placeholder="0 или 1:20">
                 </label>
-                <label>Длительность, сек
-                  <input name="duration" inputmode="decimal" placeholder="полный файл">
+                <label>Длительность
+                  <input name="duration" inputmode="decimal" placeholder="2:00">
                 </label>
+              </div>
+              <div class="clip-tools" id="clip-tools" hidden>
+                <div class="preset-row" aria-label="Пресеты тестового фрагмента">
+                  <button class="preset-button" type="button" data-start="0" data-duration="30">0:30</button>
+                  <button class="preset-button" type="button" data-start="0" data-duration="120">2:00</button>
+                  <button class="preset-button" type="button" data-start="0" data-duration="300">5:00</button>
+                </div>
               </div>
               <div class="grid-2">
                 <label>ASR-движок
@@ -1127,6 +1210,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const resultState = document.querySelector("#result-state");
     const runModeLabel = document.querySelector("#run-mode-label");
     const modeButtons = document.querySelectorAll(".segment[data-mode]");
+    const clipTools = document.querySelector("#clip-tools");
+    const presetButtons = document.querySelectorAll(".preset-button[data-duration]");
     const speakerModeLabel = document.querySelector("#speaker-mode-label");
     const speakerModeButtons = document.querySelectorAll(".segment[data-speaker-mode]");
     const speakerInputs = {{
@@ -1157,14 +1242,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
 
     function setRunMode(mode) {{
-      runMode = mode;
+      runMode = ["single", "clip", "batch"].includes(mode) ? mode : "single";
       modeButtons.forEach((button) => {{
-        button.classList.toggle("active", button.dataset.mode === mode);
+        button.classList.toggle("active", button.dataset.mode === runMode);
       }});
-      runModeLabel.textContent = mode === "batch" ? "весь Inbox" : "один файл";
-      runButton.textContent = mode === "batch" ? "Поставить весь Inbox" : "Запустить выбранный";
-      queueAllButton.hidden = mode === "batch";
-      if (mode === "batch") setSpeakerMode("auto");
+      runModeLabel.textContent = runMode === "batch" ? "весь Inbox" : runMode === "clip" ? "тест-фрагмент" : "полный файл";
+      runButton.textContent = runMode === "batch" ? "Поставить весь Inbox" : runMode === "clip" ? "Запустить фрагмент" : "Запустить полный файл";
+      queueAllButton.hidden = runMode === "batch";
+      clipTools.hidden = runMode !== "clip";
+      if (runMode === "clip" && !speakerInputs.exact.form.elements.duration.value.trim()) {{
+        speakerInputs.exact.form.elements.start.value = "0";
+        speakerInputs.exact.form.elements.duration.value = "2:00";
+      }}
+      if (runMode === "batch") setSpeakerMode("auto");
     }}
 
     function setSpeakerMode(mode) {{
@@ -1205,6 +1295,35 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       delete data.num_speakers;
     }}
 
+    function normalizeTimeFields(data) {{
+      data.start = parseFlexibleTime(data.start);
+      data.duration = parseFlexibleTime(data.duration);
+      if (runMode === "clip" && !data.duration) data.duration = "120";
+    }}
+
+    function parseFlexibleTime(value) {{
+      const text = String(value || "").trim();
+      if (!text) return "";
+      if (!text.includes(":")) return text.replace(",", ".");
+      const parts = text.split(":").map((part) => part.trim());
+      if (parts.length < 2 || parts.length > 3 || parts.some((part) => part === "" || Number.isNaN(Number(part)))) {{
+        throw new Error(`Некорректное время: ${{text}}`);
+      }}
+      const numbers = parts.map(Number);
+      const seconds = numbers.length === 2
+        ? numbers[0] * 60 + numbers[1]
+        : numbers[0] * 3600 + numbers[1] * 60 + numbers[2];
+      return String(seconds);
+    }}
+
+    function formatPresetDuration(value) {{
+      const seconds = Number(value || 0);
+      if (!Number.isFinite(seconds) || seconds <= 0) return "2:00";
+      const minutes = Math.floor(seconds / 60);
+      const rest = seconds % 60;
+      return `${{minutes}}:${{String(rest).padStart(2, "0")}}`;
+    }}
+
     fileList.addEventListener("click", async (event) => {{
       const resultTag = event.target.closest(".processed-tag");
       if (resultTag && resultTag.dataset.resultId) {{
@@ -1225,6 +1344,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }});
     modeButtons.forEach((button) => {{
       button.addEventListener("click", () => setRunMode(button.dataset.mode));
+    }});
+    presetButtons.forEach((button) => {{
+      button.addEventListener("click", () => {{
+        form.elements.start.value = button.dataset.start || "0";
+        form.elements.duration.value = formatPresetDuration(button.dataset.duration);
+        setRunMode("clip");
+      }});
     }});
     speakerModeButtons.forEach((button) => {{
       button.addEventListener("click", () => setSpeakerMode(button.dataset.speakerMode));
@@ -1296,6 +1422,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     async function createJobForSource(source) {{
       const data = Object.fromEntries(new FormData(form).entries());
       applySpeakerModeToPayload(data);
+      normalizeTimeFields(data);
       data.source = source;
       data.overwrite = form.elements.overwrite.checked;
       const response = await fetch("/api/jobs", {{
@@ -1374,10 +1501,18 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const processed = latest
         ? `<span class="processed-tag" data-result-id="${{escapeAttribute(latest.id)}}" title="Открыть готовый результат">${{escapeHtml(inboxResultLabel(results))}}</span>`
         : "";
+      const meta = [
+        file.duration_label,
+        file.format_label,
+        file.modified_label,
+      ].filter(Boolean);
       return `<button class="file-row ${{latest ? "processed" : ""}}" type="button" data-file="${{escapeAttribute(file.name)}}">
         <span class="file-main">
-          <span class="file-name">${{escapeHtml(file.name)}}</span>
-          ${{processed}}
+          <span class="file-title">
+            <span class="file-name">${{escapeHtml(file.name)}}</span>
+            ${{processed}}
+          </span>
+          <span class="file-subline">${{meta.map((item) => `<span>${{escapeHtml(item)}}</span>`).join("")}}</span>
         </span>
         <span class="file-size">${{escapeHtml(file.size_label)}}</span>
       </button>`;
@@ -1502,9 +1637,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         return acc;
       }}, {{}});
       jobCount.textContent = `${{jobs.length}} всего`;
-      queuedCount.textContent = `${{counts.queued || 0}} queued`;
-      runningCount.textContent = `${{counts.running || 0}} running`;
-      doneCount.textContent = `${{counts.done || 0}} done`;
+      queuedCount.textContent = `${{counts.queued || 0}} ожидает`;
+      runningCount.textContent = `${{counts.running || 0}} выполняется`;
+      doneCount.textContent = `${{counts.done || 0}} готово`;
     }}
 
     function speakerDraftKey(jobId, speaker) {{
@@ -1589,9 +1724,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       const files = job.files || [];
       const samples = job.speaker_samples || [];
-      const fileLinks = files.length
-        ? `<div class="link-list">${{files.map((file) => `<a class="link-chip" href="${{file.url}}" target="_blank" rel="noreferrer">${{escapeHtml(file.label)}}</a>`).join("")}}</div>`
-        : '<div class="empty">Файлы результата пока не найдены</div>';
+      const fileLinks = renderExportGroups(files);
       const speakerRows = samples.length
         ? samples.map((sample) => `<div class="speaker-row">
             <span class="badge">${{escapeHtml(sample.label)}}</span>
@@ -1691,6 +1824,50 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function resultKindLabel(kind) {{
       return kind === "clip" ? "фрагмент" : "полный";
+    }}
+
+    function renderExportGroups(files) {{
+      if (!files.length) return '<div class="empty">Файлы результата пока не найдены</div>';
+      const groups = [
+        {{ title: "Для чтения", keys: ["detailed_markdown"] }},
+        {{ title: "Для редактуры", keys: ["clean_timestamps_markdown", "clean_markdown"] }},
+        {{ title: "Текстовые версии", keys: ["clean_text", "timeline_text"] }},
+      ];
+      const byKey = new Map(files.map((file) => [file.key, file]));
+      const rendered = groups.map((group) => {{
+        const links = group.keys.map((key) => byKey.get(key)).filter(Boolean);
+        if (!links.length) return "";
+        return `<div class="export-group">
+          <div class="export-group-title">${{escapeHtml(group.title)}}</div>
+          <div class="link-list">${{links.map(renderExportLink).join("")}}</div>
+        </div>`;
+      }}).filter(Boolean).join("");
+      const leftovers = files.filter((file) => !groups.some((group) => group.keys.includes(file.key)));
+      const diagnostics = leftovers.length
+        ? `<div class="export-group">
+            <div class="export-group-title">Диагностика</div>
+            <div class="link-list">${{leftovers.map(renderExportLink).join("")}}</div>
+          </div>`
+        : "";
+      return `<div class="export-groups">${{rendered}}${{diagnostics}}</div>`;
+    }}
+
+    function renderExportLink(file) {{
+      return `<a class="link-chip" href="${{file.url}}" target="_blank" rel="noreferrer">
+        <span>${{escapeHtml(file.label)}}</span>
+        <small>${{escapeHtml(exportHint(file.key))}}</small>
+      </a>`;
+    }}
+
+    function exportHint(key) {{
+      const hints = {{
+        detailed_markdown: "общий файл с таймкодами и спикерами",
+        clean_timestamps_markdown: "чистый Markdown с таймкодами",
+        clean_markdown: "чистый Markdown без таймкодов",
+        clean_text: "TXT без таймкодов",
+        timeline_text: "TXT с таймкодами",
+      }};
+      return hints[key] || "служебный файл";
     }}
 
     function renderPendingOrFailedJob(job) {{
@@ -1945,11 +2122,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
 
     function statusLabel(status) {{
-      if (status === "done") return "done";
-      if (status === "partial") return "partial";
-      if (status === "failed") return "failed";
-      if (status === "running") return "running";
-      return "queued";
+      if (status === "done") return "Готово";
+      if (status === "partial") return "Частично";
+      if (status === "failed") return "Ошибка";
+      if (status === "running") return "Выполняется";
+      return "Ожидает";
     }}
 
     function setStatusBadge(node, cls, text) {{
@@ -2418,11 +2595,17 @@ def _inbox_files_payload(inbox: Path, results: list[dict[str, object]] | None = 
 
 
 def _inbox_file_payload(path: Path, results: list[dict[str, object]] | None = None) -> dict[str, object]:
+    stat = path.stat()
+    metadata = _media_metadata(path, stat)
     result_summaries = [_inbox_result_summary(result) for result in (results or [])]
     return {
         "name": path.name,
-        "size": path.stat().st_size,
+        "size": stat.st_size,
         "size_label": _file_size_label(path),
+        "duration": metadata.get("duration"),
+        "duration_label": metadata.get("duration_label"),
+        "format_label": metadata.get("format_label"),
+        "modified_label": metadata.get("modified_label"),
         "processed": bool(result_summaries),
         "results": result_summaries,
     }
@@ -2683,6 +2866,77 @@ def _clip_suffix(start: float | None, duration: float | None) -> str:
     if start is None and duration is None:
         return ""
     return f"_{int(start or 0)}s_{int(duration or 0)}s"
+
+
+def _media_metadata(path: Path, stat: os.stat_result | None = None) -> dict[str, object]:
+    stat = stat or path.stat()
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    cached = MEDIA_METADATA_CACHE.get(key)
+    if cached is not None:
+        return cached
+    metadata: dict[str, object] = {
+        "format_label": _format_label(path),
+        "modified_label": _modified_label(path, stat),
+    }
+    duration = _probe_duration(path)
+    if duration is not None:
+        metadata["duration"] = duration
+        metadata["duration_label"] = _duration_label(duration)
+    if len(MEDIA_METADATA_CACHE) > 256:
+        MEDIA_METADATA_CACHE.clear()
+    MEDIA_METADATA_CACHE[key] = metadata
+    return metadata
+
+
+def _probe_duration(path: Path) -> float | None:
+    if shutil.which("ffprobe") is None:
+        return None
+    try:
+        process = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if process.returncode != 0:
+        return None
+    try:
+        payload = json.loads(process.stdout)
+        duration = float(payload.get("format", {}).get("duration"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return duration if duration >= 0 else None
+
+
+def _duration_label(seconds: float) -> str:
+    total = max(0, int(round(seconds)))
+    hours = total // 3600
+    minutes = (total % 3600) // 60
+    secs = total % 60
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _format_label(path: Path) -> str:
+    return path.suffix.upper().lstrip(".") or "AUDIO"
+
+
+def _modified_label(path: Path, stat: os.stat_result | None = None) -> str:
+    stat = stat or path.stat()
+    return time.strftime("%d.%m %H:%M", time.localtime(stat.st_mtime))
 
 
 def _file_size_label(path: Path) -> str:
