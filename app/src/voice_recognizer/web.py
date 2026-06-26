@@ -490,6 +490,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .segment:focus-visible,
     .preset-button:focus-visible,
     .batch-select:focus-within,
+    .result-tab:focus-visible,
     .file-row:focus-visible,
     .job-row:focus-visible,
     .result-row:focus-visible,
@@ -586,6 +587,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       cursor: pointer;
       font-size: 12px;
       font-weight: 780;
+    }}
+    .preset-button.active {{
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-dark);
     }}
     .batch-tools {{
       display: flex;
@@ -891,6 +897,113 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       flex-wrap: wrap;
       gap: 6px;
     }}
+    .result-tabs {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface-2);
+    }}
+    .result-tab {{
+      min-height: 32px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 780;
+    }}
+    .result-tab.active {{
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(17, 23, 25, 0.08);
+    }}
+    .result-panel {{
+      display: grid;
+      gap: 12px;
+    }}
+    .result-panel[hidden] {{
+      display: none;
+    }}
+    .overview-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .overview-item {{
+      display: grid;
+      gap: 3px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 10px;
+      background: #fff;
+    }}
+    .overview-item span:first-child {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+    }}
+    .overview-item span:last-child {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 720;
+    }}
+    .transcript-toolbar {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }}
+    .transcript-preview {{
+      max-width: 72ch;
+      display: grid;
+      gap: 10px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.55;
+    }}
+    .transcript-turn {{
+      display: grid;
+      gap: 5px;
+      border-left: 3px solid var(--accent);
+      padding: 8px 0 8px 10px;
+    }}
+    .transcript-turn:nth-child(3n + 1) {{
+      border-left-color: var(--accent);
+    }}
+    .transcript-turn:nth-child(3n + 2) {{
+      border-left-color: var(--done);
+    }}
+    .transcript-turn:nth-child(3n + 3) {{
+      border-left-color: #476c9b;
+    }}
+    .transcript-speaker {{
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 820;
+    }}
+    .transcript-line {{
+      margin: 0;
+      color: var(--text);
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }}
+    .timecode {{
+      display: inline-flex;
+      margin-right: 6px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 740;
+    }}
     .progress-block,
     .diagnostic-block {{
       display: grid;
@@ -1098,6 +1211,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       .job-link {{
         grid-column: 2;
+      }}
+      .result-tabs,
+      .overview-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
     }}
   </style>
@@ -1338,6 +1455,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let batchSelectionReady = false;
     let clipValidationOk = true;
     const speakerNameDrafts = new Map();
+    const resultTabDrafts = new Map();
+    const previewModeDrafts = new Map();
+    const transcriptCache = new Map();
     const pipelineStages = [
       {{ key: "audio", label: "Аудио" }},
       {{ key: "asr", label: "ASR" }},
@@ -2009,6 +2129,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const files = job.files || [];
       const samples = job.speaker_samples || [];
       const fileLinks = renderExportGroups(files);
+      const activeTab = resultTab(job.id);
+      const previewMode = transcriptPreviewMode(job.id);
       const speakerRows = samples.length
         ? samples.map((sample) => `<div class="speaker-row">
             <span class="badge">${{escapeHtml(sample.label)}}</span>
@@ -2021,11 +2143,25 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       </div>`;
       resultDetails.innerHTML = `
         <div class="result-meta">${{jobBadges(job)}}</div>
-        ${{fileLinks}}
-        <div class="speaker-editor">
-          ${{speakerRows}}
-          ${{speakerActions}}
-        </div>`;
+        ${{renderResultTabs(activeTab)}}
+        <section class="result-panel" data-result-panel="overview" ${{activeTab === "overview" ? "" : "hidden"}}>
+          ${{renderResultOverview(job, files, samples)}}
+        </section>
+        <section class="result-panel" data-result-panel="text" ${{activeTab === "text" ? "" : "hidden"}}>
+          ${{renderTextPreviewShell(files, previewMode)}}
+        </section>
+        <section class="result-panel" data-result-panel="speakers" ${{activeTab === "speakers" ? "" : "hidden"}}>
+          <div class="speaker-editor">
+            ${{speakerRows}}
+            ${{speakerActions}}
+          </div>
+        </section>
+        <section class="result-panel" data-result-panel="files" ${{activeTab === "files" ? "" : "hidden"}}>
+          ${{fileLinks}}
+        </section>`;
+      wireResultTabs(job);
+      wireTranscriptControls(job, files);
+      loadTranscriptPreview(job, files);
       const applyButton = document.querySelector("#apply-speaker-names");
       if (applyButton) {{
         applyButton.addEventListener("click", async () => {{
@@ -2047,6 +2183,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || "request failed");
             clearSpeakerNameDrafts(job.id);
+            clearTranscriptCache(payload.files || []);
             renderedResultKey = null;
             if (payload.is_disk_result) {{
               activeView = "result";
@@ -2076,6 +2213,151 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       wireSpeakerNameInputs();
       restoreSpeakerFocus(focusState);
+    }}
+
+    function resultTab(jobId) {{
+      return resultTabDrafts.get(jobId) || "text";
+    }}
+
+    function transcriptPreviewMode(jobId) {{
+      return previewModeDrafts.get(jobId) || "timestamps";
+    }}
+
+    function renderResultTabs(activeTab) {{
+      const tabs = [
+        ["overview", "Обзор"],
+        ["text", "Текст"],
+        ["speakers", "Спикеры"],
+        ["files", "Файлы"],
+      ];
+      return `<div class="result-tabs" role="tablist" aria-label="Разделы результата">
+        ${{tabs.map(([key, label]) => `<button class="result-tab ${{activeTab === key ? "active" : ""}}" type="button" role="tab" aria-selected="${{activeTab === key ? "true" : "false"}}" data-result-tab="${{key}}">${{label}}</button>`).join("")}}
+      </div>`;
+    }}
+
+    function wireResultTabs(job) {{
+      document.querySelectorAll(".result-tab").forEach((button) => {{
+        button.addEventListener("click", () => {{
+          resultTabDrafts.set(job.id, button.dataset.resultTab);
+          document.querySelectorAll(".result-tab").forEach((tab) => {{
+            const active = tab.dataset.resultTab === button.dataset.resultTab;
+            tab.classList.toggle("active", active);
+            tab.setAttribute("aria-selected", active ? "true" : "false");
+          }});
+          document.querySelectorAll(".result-panel").forEach((panel) => {{
+            panel.hidden = panel.dataset.resultPanel !== button.dataset.resultTab;
+          }});
+          if (button.dataset.resultTab === "text") loadTranscriptPreview(job, job.files || []);
+        }});
+      }});
+    }}
+
+    function renderResultOverview(job, files, samples) {{
+      const rows = [
+        ["Источник", job.source_name || "-"],
+        ["ASR", job.asr_engine || "не указан"],
+        ["Спикеры", `${{samples.length || job.num_speakers || 0}}`],
+        ["Файлы", `${{files.length}} экспортов`],
+        ["Папка", job.output_dir || "outputs"],
+        ["Тип", resultKindLabel(job.kind)],
+      ];
+      return `<div class="overview-grid">${{rows.map(([label, value]) => `<div class="overview-item"><span>${{escapeHtml(label)}}</span><span title="${{escapeHtml(value)}}">${{escapeHtml(value)}}</span></div>`).join("")}}</div>`;
+    }}
+
+    function renderTextPreviewShell(files, mode) {{
+      const source = transcriptPreviewFile(files, mode);
+      if (!source) {{
+        return '<div class="empty">Текстовый экспорт пока не найден</div>';
+      }}
+      return `<div class="transcript-toolbar">
+        <div class="actions">
+          <button class="preset-button ${{mode === "timestamps" ? "active" : ""}}" type="button" data-preview-mode="timestamps">С таймкодами</button>
+          <button class="preset-button ${{mode === "clean" ? "active" : ""}}" type="button" data-preview-mode="clean">Без таймкодов</button>
+        </div>
+        <a class="job-link" href="${{source.url}}" target="_blank" rel="noreferrer">Открыть файл</a>
+      </div>
+      <div class="transcript-preview" id="transcript-preview" data-preview-url="${{escapeAttribute(source.url)}}">Загружаю текст...</div>`;
+    }}
+
+    function wireTranscriptControls(job, files) {{
+      document.querySelectorAll("[data-preview-mode]").forEach((button) => {{
+        button.addEventListener("click", () => {{
+          previewModeDrafts.set(job.id, button.dataset.previewMode);
+          const panel = document.querySelector('[data-result-panel="text"]');
+          if (panel) panel.innerHTML = renderTextPreviewShell(files, button.dataset.previewMode);
+          wireTranscriptControls(job, files);
+          loadTranscriptPreview(job, files);
+        }});
+      }});
+    }}
+
+    async function loadTranscriptPreview(job, files) {{
+      if (resultTab(job.id) !== "text") return;
+      const container = document.querySelector("#transcript-preview");
+      if (!container) return;
+      const url = container.dataset.previewUrl;
+      if (!url) return;
+      try {{
+        let text = transcriptCache.get(url);
+        if (!text) {{
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`preview fetch failed: ${{response.status}}`);
+          text = await response.text();
+          transcriptCache.set(url, text);
+        }}
+        container.innerHTML = renderTranscriptMarkdown(text);
+      }} catch (error) {{
+        container.innerHTML = `<div class="empty">${{escapeHtml(String(error))}}</div>`;
+      }}
+    }}
+
+    function transcriptPreviewFile(files, mode) {{
+      const preferredKeys = mode === "clean"
+        ? ["clean_markdown", "clean_text", "clean_timestamps_markdown", "timeline_text", "detailed_markdown"]
+        : ["clean_timestamps_markdown", "timeline_text", "detailed_markdown", "clean_markdown", "clean_text"];
+      for (const key of preferredKeys) {{
+        const file = files.find((item) => item.key === key);
+        if (file) return file;
+      }}
+      return files[0] || null;
+    }}
+
+    function renderTranscriptMarkdown(text) {{
+      const lines = String(text || "").split(/\\r?\\n/);
+      const turns = [];
+      let current = null;
+      for (const rawLine of lines) {{
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (line.startsWith("# ")) continue;
+        if (line.startsWith("## ")) {{
+          if (current) turns.push(current);
+          current = {{ speaker: line.replace(/^##\\s+/, ""), lines: [] }};
+          continue;
+        }}
+        if (!current) current = {{ speaker: "Текст", lines: [] }};
+        current.lines.push(line);
+      }}
+      if (current) turns.push(current);
+      if (!turns.length) return '<div class="empty">Текст пуст</div>';
+      return turns.slice(0, 160).map((turn) => `<article class="transcript-turn">
+        <div class="transcript-speaker">${{escapeHtml(turn.speaker)}}</div>
+        ${{turn.lines.map(renderTranscriptLine).join("")}}
+      </article>`).join("") + (turns.length > 160 ? '<div class="empty">Показан первый фрагмент. Полный текст откройте файлом экспорта.</div>' : "");
+    }}
+
+    function renderTranscriptLine(line) {{
+      const match = line.match(/^`([^`]+)`\\s*(.*)$/);
+      if (match) {{
+        return `<p class="transcript-line"><span class="timecode">${{escapeHtml(match[1])}}</span>${{escapeHtml(match[2])}}</p>`;
+      }}
+      return `<p class="transcript-line">${{escapeHtml(line.replace(/^[-*]\\s+/, ""))}}</p>`;
+    }}
+
+    function clearTranscriptCache(files) {{
+      (files || []).forEach((file) => {{
+        if (file.url) transcriptCache.delete(file.url);
+      }});
     }}
 
     function resultRenderKey(job) {{

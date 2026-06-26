@@ -232,6 +232,27 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: `2:00` shows `0:00-2:00`, `99:00` shows local out-of-file warning and disables run, `1:30` re-enables run, console clean;
 - mobile viewport 390px: no horizontal overflow.
 
+### Implementation Result Preview Tabs
+
+Status: DELIVERED (2026-06-26), Codex. Add result tabs and transcript preview.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Result Preview Tabs` block in `.agents/task-board.md`
+
+Goal:
+
+- split result panel into Overview/Text/Speakers/Files tabs;
+- load transcript preview from existing export files without changing pipeline;
+- keep speaker naming and export links working inside the new structure.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- in-app Browser on `http://127.0.0.1:8782/`: disk result opens with Text tab by default, transcript preview loads from export file, Speakers tab contains audio/name/apply controls, Files tab keeps grouped exports, Overview tab shows metadata, console clean;
+- mobile viewport 390px: result tabs render after opening a result, no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
