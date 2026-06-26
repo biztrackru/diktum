@@ -274,6 +274,29 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: top bar shows `Локально · 127.0.0.1:8782` and `Аудио и тексты остаются на этом Mac`;
 - mobile viewport 390px: no horizontal overflow.
 
+### Implementation Source Freshness
+
+Status: DELIVERED (2026-06-27), Codex. Warn when disk-backed results no longer match the source audio.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Source Freshness` block in `.agents/task-board.md`
+
+Goal:
+
+- detect whether a result source file is fresh, changed after processing, missing, or not safely checkable;
+- surface changed/missing source state in Inbox badges, the results list, and result overview;
+- avoid breaking result listing when a manifest source is absent or outside the project.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- API smoke with `PYTHONPATH=app/src`: 15 disk results expose `source_status=fresh`, Inbox summaries inherit source freshness;
+- temporary manifest smoke: source mtime newer than manifest returns `source_status=changed`;
+- in-app Browser on `http://127.0.0.1:8782/`: page loads, console clean, 15 results render, result overview shows `Исходник — исходник свежий`;
+- mobile viewport 390px: no horizontal overflow, Inbox freshness tooltips remain readable.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

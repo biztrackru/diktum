@@ -22,6 +22,7 @@ from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, nor
 
 
 MAX_LOG_LINES = 500
+SOURCE_FRESHNESS_TOLERANCE_SECONDS = 2.0
 JOBS: dict[str, "Job"] = {}
 JOB_QUEUE: list[str] = []
 JOBS_LOCK = threading.Lock()
@@ -768,6 +769,14 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       color: var(--accent);
       font-size: 11px;
       font-weight: 800;
+    }}
+    .processed-tag.changed {{
+      background: rgba(182, 106, 32, 0.14);
+      color: var(--done);
+    }}
+    .processed-tag.missing {{
+      background: rgba(180, 35, 24, 0.1);
+      color: var(--danger);
     }}
     .file-row.active {{
       border-color: var(--accent);
@@ -1860,7 +1869,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const results = file.results || [];
       const latest = results.length ? results[0] : null;
       const processed = latest
-        ? `<span class="processed-tag" data-result-id="${{escapeAttribute(latest.id)}}" title="Открыть готовый результат">${{escapeHtml(inboxResultLabel(results))}}</span>`
+        ? `<span class="processed-tag ${{sourceFreshnessTagClass(latest)}}" data-result-id="${{escapeAttribute(latest.id)}}" title="${{escapeAttribute(sourceFreshnessTitle(latest))}}">${{escapeHtml(inboxResultLabel(results))}}</span>`
         : "";
       const meta = [
         file.duration_label,
@@ -1887,8 +1896,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function inboxResultLabel(results) {{
       if (!results || !results.length) return "";
+      const latest = results[0];
+      if (sourceFreshnessStatus(latest) === "changed") return "обновить";
+      if (sourceFreshnessStatus(latest) === "missing") return "нет исходника";
       if (results.length > 1) return `${{results.length}} готово`;
-      return results[0].kind === "clip" ? "фрагмент готов" : "готово";
+      return latest.kind === "clip" ? "фрагмент готов" : "готово";
     }}
 
     function syncBatchSelectionWithFiles(files) {{
@@ -2021,7 +2033,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             <span class="result-name" title="${{escapeHtml(result.source_name)}}">${{escapeHtml(result.source_name)}}</span>
             <span class="result-meta-line">${{escapeHtml(resultMeta(result))}}</span>
           </span>
-          <span class="badge">${{escapeHtml(formatDateTime(result.completed_at))}}</span>
+          <span class="badge ${{sourceFreshnessClass(result)}}" title="${{escapeAttribute(sourceFreshnessTitle(result))}}">${{escapeHtml(resultListTrail(result))}}</span>
         </button>`
       )).join("");
       document.querySelectorAll(".result-row").forEach((row) => {{
@@ -2283,6 +2295,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         ["Файлы", `${{files.length}} экспортов`],
         ["Папка", job.output_dir || "outputs"],
         ["Тип", resultKindLabel(job.kind)],
+        ["Исходник", sourceFreshnessLabel(job)],
       ];
       return `<div class="overview-grid">${{rows.map(([label, value]) => `<div class="overview-item"><span>${{escapeHtml(label)}}</span><span title="${{escapeHtml(value)}}">${{escapeHtml(value)}}</span></div>`).join("")}}</div>`;
     }}
@@ -2394,16 +2407,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const samples = (job.speaker_samples || [])
         .map((sample) => `${{sample.speaker}}=${{sample.url}}:${{sample.label}}:${{sample.name || ""}}`)
         .join("|");
-      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{files}}:${{samples}}`;
+      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{job.source_status || ""}}:${{files}}:${{samples}}`;
     }}
 
     function jobBadges(job) {{
-      return [
+      const badges = [
         `<span class="badge ${{statusClass(job.status)}}">${{statusLabel(job.status)}}</span>`,
         `<span class="badge">${{escapeHtml(clipLabel(job))}}</span>`,
         `<span class="badge">${{escapeHtml(speakerLabel(job))}}</span>`,
         `<span class="badge">${{escapeHtml(job.output_dir || "outputs")}}</span>`,
-      ].join("");
+      ];
+      const sourceBadge = sourceFreshnessBadge(job);
+      if (sourceBadge) badges.push(sourceBadge);
+      return badges.join("");
     }}
 
     function jobMeta(job) {{
@@ -2425,8 +2441,63 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         speakerLabel(result),
         result.asr_engine || "ASR",
         result.output_dir || "outputs",
+        sourceFreshnessInline(result),
       ];
       return parts.filter(Boolean).join(" · ");
+    }}
+
+    function resultListTrail(result) {{
+      const status = sourceFreshnessStatus(result);
+      if (status === "changed") return "обновить";
+      if (status === "missing") return "нет исходника";
+      return formatDateTime(result.completed_at);
+    }}
+
+    function sourceFreshnessStatus(result) {{
+      if (!result) return "unknown";
+      if (result.source_changed) return "changed";
+      if (result.source_missing) return "missing";
+      return result.source_status || "unknown";
+    }}
+
+    function sourceFreshnessLabel(result) {{
+      const status = sourceFreshnessStatus(result);
+      if (status === "fresh") return "исходник свежий";
+      if (status === "changed") return "исходник изменился после обработки";
+      if (status === "missing") return "исходник не найден";
+      return result?.source_status_label || "исходник не проверен";
+    }}
+
+    function sourceFreshnessInline(result) {{
+      const status = sourceFreshnessStatus(result);
+      if (status === "changed" || status === "missing") return sourceFreshnessLabel(result);
+      return "";
+    }}
+
+    function sourceFreshnessBadge(result) {{
+      const status = sourceFreshnessStatus(result);
+      if (status === "fresh" || status === "unknown") return "";
+      return `<span class="badge ${{sourceFreshnessClass(result)}}" title="${{escapeAttribute(sourceFreshnessTitle(result))}}">${{escapeHtml(sourceFreshnessLabel(result))}}</span>`;
+    }}
+
+    function sourceFreshnessClass(result) {{
+      const status = sourceFreshnessStatus(result);
+      if (status === "changed") return "done";
+      if (status === "missing") return "failed";
+      return "";
+    }}
+
+    function sourceFreshnessTagClass(result) {{
+      const status = sourceFreshnessStatus(result);
+      if (status === "changed") return "changed";
+      if (status === "missing") return "missing";
+      return "";
+    }}
+
+    function sourceFreshnessTitle(result) {{
+      const label = sourceFreshnessLabel(result);
+      const path = result?.source_path ? ` · ${{result.source_path}}` : "";
+      return `${{label}}${{path}}`;
     }}
 
     function resultKindLabel(kind) {{
@@ -3028,6 +3099,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
     samples = _manifest_samples(manifest, root)
     clip_start, clip_duration = _clip_window_from_manifest_path(manifest_path)
     source_name = _manifest_source_name(manifest, manifest_path)
+    source_freshness = _manifest_source_freshness(manifest, manifest_path, root, completed_at)
     markdown_url = next((file["url"] for file in files if file.get("key") == "detailed_markdown"), None)
     speaker_count = _optional_int_value(manifest.get("speaker_count"))
     return {
@@ -3056,6 +3128,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
         "kind": "clip" if clip_duration is not None else "full",
         "manifest_url": _output_url(root, manifest_path),
         "is_disk_result": True,
+        **source_freshness,
     }
 
 
@@ -3242,6 +3315,63 @@ def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) 
     return payload
 
 
+def _manifest_source_freshness(
+    manifest: dict[str, object],
+    manifest_path: Path,
+    root: Path,
+    completed_at: float,
+) -> dict[str, object]:
+    raw_source = str(manifest.get("source") or "").strip()
+    base: dict[str, object] = {
+        "source_status": "unknown",
+        "source_status_label": "исходник не проверен",
+        "source_changed": False,
+        "source_missing": False,
+        "source_modified_at": None,
+        "source_path": "",
+    }
+    if not raw_source:
+        return base
+
+    source_path = Path(raw_source)
+    if not source_path.is_absolute():
+        source_path = root / source_path
+    source_path = source_path.resolve()
+    try:
+        source_path.relative_to(root.resolve())
+    except ValueError:
+        base["source_status_label"] = "исходник вне проекта"
+        base["source_path"] = str(source_path)
+        return base
+
+    base["source_path"] = _relative_display(root, source_path)
+    if not source_path.exists():
+        base.update(
+            {
+                "source_status": "missing",
+                "source_status_label": "исходник не найден",
+                "source_missing": True,
+            }
+        )
+        return base
+
+    try:
+        source_modified_at = source_path.stat().st_mtime
+    except OSError:
+        return base
+
+    changed = source_modified_at > completed_at + SOURCE_FRESHNESS_TOLERANCE_SECONDS
+    base.update(
+        {
+            "source_status": "changed" if changed else "fresh",
+            "source_status_label": "исходник изменился" if changed else "исходник свежий",
+            "source_changed": changed,
+            "source_modified_at": source_modified_at,
+        }
+    )
+    return base
+
+
 def _manifest_source_path(manifest: dict[str, object], root: Path) -> Path:
     raw_source = str(manifest.get("source") or "").strip()
     if not raw_source:
@@ -3314,6 +3444,10 @@ def _inbox_result_summary(result: dict[str, object]) -> dict[str, object]:
         "output_dir": result.get("output_dir"),
         "file_count": len(result.get("files", [])) if isinstance(result.get("files"), list) else 0,
         "speaker_count": len(result.get("speaker_samples", [])) if isinstance(result.get("speaker_samples"), list) else 0,
+        "source_status": result.get("source_status"),
+        "source_status_label": result.get("source_status_label"),
+        "source_changed": result.get("source_changed"),
+        "source_missing": result.get("source_missing"),
     }
 
 
