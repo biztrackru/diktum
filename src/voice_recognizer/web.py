@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import cgi
 import html
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -13,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from voice_recognizer.audio import iter_media_files, safe_stem
+from voice_recognizer.audio import SUPPORTED_MEDIA_EXTENSIONS, iter_media_files, safe_stem
 from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, normalize_asr_engine
 
 
@@ -108,6 +110,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if parsed.path == "/":
             self._send_html(self._render_index(), head_only=head_only)
             return
+        if parsed.path == "/api/inbox":
+            self._send_json({"files": _inbox_files_payload(self.web_config.inbox)}, head_only=head_only)
+            return
         if parsed.path == "/api/jobs":
             self._send_json({"jobs": _job_list(self.web_config.root)}, head_only=head_only)
             return
@@ -127,6 +132,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/uploads":
+            try:
+                files = self._save_uploads()
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"files": files}, status=HTTPStatus.CREATED)
+            return
+
         if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/speaker-names"):
             job_id = parsed.path.removeprefix("/api/jobs/").removesuffix("/speaker-names").strip("/")
             try:
@@ -762,9 +776,18 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             <div class="panel-title">
               <h2>Inbox</h2>
             </div>
-            <span class="badge">{file_count} файлов</span>
+            <span class="badge" id="file-count">{file_count} файлов</span>
           </div>
           <div class="section-body">
+            <form id="upload-form" enctype="multipart/form-data">
+              <label>Загрузить аудио
+                <input id="upload-input" name="files" type="file" multiple accept="audio/*,video/mp4,.m4a,.mp3,.wav,.flac,.ogg,.mp4,.mov,.mkv,.webm">
+              </label>
+              <div class="actions">
+                <button class="btn full" id="upload-button" type="submit">Добавить в Inbox</button>
+                <span class="badge" id="upload-status">готово</span>
+              </div>
+            </form>
             <label>Источник
               <select name="source" id="source-select" form="job-form" required>
                 {options}
@@ -890,6 +913,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const form = document.querySelector("#job-form");
     const runButton = document.querySelector("#run-button");
     const queueAllButton = document.querySelector("#queue-all-button");
+    const uploadForm = document.querySelector("#upload-form");
+    const uploadInput = document.querySelector("#upload-input");
+    const uploadButton = document.querySelector("#upload-button");
+    const uploadStatus = document.querySelector("#upload-status");
+    const fileCountNode = document.querySelector("#file-count");
     const sourceSelect = document.querySelector("#source-select");
     const fileList = document.querySelector("#file-list");
     const jobsNode = document.querySelector("#jobs");
@@ -989,7 +1017,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       button.addEventListener("click", () => setSpeakerMode(button.dataset.speakerMode));
     }});
     document.querySelector("#refresh-button").addEventListener("click", loadJobs);
+    document.querySelector("#refresh-button").addEventListener("click", () => loadInbox());
     queueAllButton.addEventListener("click", () => queueAllJobs());
+    uploadForm.addEventListener("submit", async (event) => {{
+      event.preventDefault();
+      await uploadFiles();
+    }});
 
     form.addEventListener("submit", async (event) => {{
       event.preventDefault();
@@ -1053,6 +1086,69 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "request failed");
       return payload;
+    }}
+
+    async function uploadFiles() {{
+      const files = Array.from(uploadInput.files || []);
+      if (!files.length) {{
+        setStatusBadge(uploadStatus, "failed", "выберите файл");
+        return;
+      }}
+      uploadButton.disabled = true;
+      setStatusBadge(uploadStatus, "running", "загрузка");
+      try {{
+        const data = new FormData(uploadForm);
+        const response = await fetch("/api/uploads", {{
+          method: "POST",
+          body: data,
+        }});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "upload failed");
+        const uploaded = payload.files || [];
+        const firstUploaded = uploaded.length ? uploaded[0].name : null;
+        uploadInput.value = "";
+        setStatusBadge(uploadStatus, "done", `${{uploaded.length}} добавлено`);
+        await loadInbox(firstUploaded);
+      }} catch (error) {{
+        setStatusBadge(uploadStatus, "failed", "ошибка");
+        logNode.textContent = String(error);
+      }} finally {{
+        uploadButton.disabled = false;
+      }}
+    }}
+
+    async function loadInbox(preferredSource = null) {{
+      let payload;
+      try {{
+        const response = await fetch("/api/inbox");
+        payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "request failed");
+      }} catch (error) {{
+        logNode.textContent = String(error);
+        return;
+      }}
+      const files = payload.files || [];
+      const previous = preferredSource || sourceSelect.value;
+      sourceSelect.innerHTML = files.map((file) => (
+        `<option value="${{escapeAttribute(file.name)}}">${{escapeHtml(file.name)}}</option>`
+      )).join("");
+      fileList.innerHTML = files.length
+        ? files.map((file) => (
+          `<button class="file-row" type="button" data-file="${{escapeAttribute(file.name)}}">
+            <span>${{escapeHtml(file.name)}}</span>
+            <span>${{escapeHtml(file.size_label)}}</span>
+          </button>`
+        )).join("")
+        : '<div class="empty">Inbox пуст</div>';
+      fileCountNode.textContent = `${{files.length}} файлов`;
+      if (files.some((file) => file.name === previous)) {{
+        sourceSelect.value = previous;
+      }}
+      const hasFiles = files.length > 0;
+      sourceSelect.disabled = !hasFiles;
+      runButton.disabled = !hasFiles;
+      queueAllButton.disabled = !hasFiles;
+      syncFileSelection();
     }}
 
     async function loadJobs() {{
@@ -1309,6 +1405,38 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("invalid payload")
         return payload
+
+    def _save_uploads(self) -> list[dict[str, object]]:
+        content_type = self.headers.get("Content-Type") or ""
+        if not content_type.startswith("multipart/form-data"):
+            raise ValueError("upload must use multipart/form-data")
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+        )
+        fields = form["files"] if "files" in form else []
+        if not isinstance(fields, list):
+            fields = [fields]
+        self.web_config.inbox.mkdir(parents=True, exist_ok=True)
+        uploads = []
+        for field in fields:
+            filename = getattr(field, "filename", None)
+            if not filename:
+                continue
+            target = _unique_inbox_path(self.web_config.inbox, filename)
+            uploads.append((field, target))
+        if not uploads:
+            raise ValueError("no supported files uploaded")
+        saved = []
+        for field, target in uploads:
+            with target.open("wb") as output:
+                shutil.copyfileobj(field.file, output)
+            saved.append(_inbox_file_payload(target))
+        return saved
 
     def _send_html(self, body: str, status: HTTPStatus = HTTPStatus.OK, *, head_only: bool = False) -> None:
         data = body.encode("utf-8")
@@ -1571,6 +1699,58 @@ def _resolve_source(inbox: Path, source_name: str) -> Path:
     if source_name not in files:
         raise ValueError("source not found in Inbox")
     return files[source_name]
+
+
+def _inbox_files_payload(inbox: Path) -> list[dict[str, object]]:
+    return [_inbox_file_payload(path) for path in iter_media_files(inbox)]
+
+
+def _inbox_file_payload(path: Path) -> dict[str, object]:
+    return {
+        "name": path.name,
+        "size": path.stat().st_size,
+        "size_label": _file_size_label(path),
+    }
+
+
+def _unique_inbox_path(inbox: Path, filename: str) -> Path:
+    inbox = inbox.resolve()
+    clean_name = _safe_upload_name(filename)
+    target = (inbox / clean_name).resolve()
+    try:
+        target.relative_to(inbox)
+    except ValueError as error:
+        raise ValueError("invalid upload filename") from error
+    if not target.exists():
+        return target
+
+    stem = target.stem
+    suffix = target.suffix
+    for index in range(2, 10000):
+        candidate = (inbox / f"{stem}-{index}{suffix}").resolve()
+        try:
+            candidate.relative_to(inbox)
+        except ValueError as error:
+            raise ValueError("invalid upload filename") from error
+        if not candidate.exists():
+            return candidate
+    raise ValueError("too many files with the same name in Inbox")
+
+
+def _safe_upload_name(filename: str) -> str:
+    name = Path(str(filename).replace("\\", "/")).name.strip()
+    if not name:
+        raise ValueError("upload filename is empty")
+    suffix = Path(name).suffix.lower()
+    if suffix not in SUPPORTED_MEDIA_EXTENSIONS:
+        supported = ", ".join(sorted(SUPPORTED_MEDIA_EXTENSIONS))
+        raise ValueError(f"unsupported file type {suffix or '<none>'}; supported: {supported}")
+    stem = Path(name).stem.strip().strip(".") or "audio"
+    clean_stem = "".join(
+        "_" if char in {"/", "\\", ":", "\0"} or ord(char) < 32 else char
+        for char in stem
+    ).strip(". ")
+    return f"{clean_stem or 'audio'}{suffix}"
 
 
 def _read_manifest(path: Path) -> dict[str, object]:
