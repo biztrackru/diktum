@@ -84,6 +84,27 @@ Checks:
 - Browser/IAB on `http://127.0.0.1:8782/`: page loads, console clean, F2 live job regression passes after 6.9s and two polling cycles, mobile 390px has no horizontal overflow;
 - smoke job output was isolated to `outputs/ui-f2-smoke` and removed after verification.
 
+### Implementation F3/F4
+
+Status: DELIVERED (2026-06-26), Codex. UX implementation portion 2 from `.agents/next-task-ux-implementation.md`.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation F3/F4` block in `.agents/task-board.md`
+
+Goal:
+
+- F3: show coarse pipeline stage, elapsed time, start time and last meaningful log for queued/running jobs;
+- F4: replace dead-end failed/offline messages with human-readable diagnostics and concrete next steps;
+- keep the change local to the web UI; no pipeline or manifest changes.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- extracted rendered HTML script and ran `node --check /tmp/voice-recognizer-f3.js`;
+- Browser/IAB on `http://127.0.0.1:8782/`: running job shows stage rail, elapsed/start and heartbeat; failed job shows diagnostic block with `role=alert`; desktop 1280px and mobile 390px have no horizontal overflow; console clean.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

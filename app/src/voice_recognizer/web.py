@@ -664,6 +664,101 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       flex-wrap: wrap;
       gap: 6px;
     }}
+    .progress-block,
+    .diagnostic-block {{
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }}
+    .progress-block {{
+      border-left-color: var(--accent);
+      background: rgba(11, 127, 114, 0.04);
+    }}
+    .diagnostic-block {{
+      border-left-color: var(--danger);
+      background: rgba(180, 35, 24, 0.04);
+    }}
+    .diagnostic-block h3 {{
+      margin: 0;
+      color: var(--danger);
+      font-size: 13px;
+      line-height: 1.3;
+      font-weight: 780;
+    }}
+    .diagnostic-block p,
+    .progress-block p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 600;
+    }}
+    .stage-top {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }}
+    .stage-list {{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 7px;
+    }}
+    .stage-step {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      color: var(--soft);
+      font-size: 10px;
+      line-height: 1.2;
+      font-weight: 760;
+      text-align: center;
+    }}
+    .stage-bar {{
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--surface-2);
+    }}
+    .stage-bar span {{
+      display: block;
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+    }}
+    .stage-step.done,
+    .stage-step.active {{
+      color: var(--accent);
+    }}
+    .stage-step.done .stage-bar span {{
+      width: 100%;
+    }}
+    .stage-step.active .stage-bar span {{
+      width: 64%;
+    }}
+    .heartbeat {{
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-word;
+    }}
+    .next-actions {{
+      display: grid;
+      gap: 5px;
+      margin: 0;
+      padding-left: 18px;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 620;
+    }}
     .link-list {{
       display: flex;
       flex-wrap: wrap;
@@ -951,6 +1046,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let runMode = "single";
     let speakerMode = "auto";
     const speakerNameDrafts = new Map();
+    const pipelineStages = [
+      {{ key: "audio", label: "Аудио" }},
+      {{ key: "asr", label: "ASR" }},
+      {{ key: "diarization", label: "Диаризация" }},
+      {{ key: "merge", label: "Склейка" }},
+      {{ key: "export", label: "Экспорт" }},
+    ];
 
     function syncFileSelection() {{
       document.querySelectorAll(".file-row").forEach((row) => {{
@@ -1169,7 +1271,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }} catch (error) {{
         setStatusBadge(resultState, "failed", "offline");
         setStatusBadge(activeJobNode, "failed", "offline");
-        logNode.textContent = String(error);
+        const problem = diagnoseProblem(String(error), {{ offline: true }});
+        resultDetails.innerHTML = renderDiagnosticBlock(problem);
+        logNode.textContent = `${{problem.title}}\n${{problem.detail}}\n\n${{problem.actions.join("\\n")}}`;
+        renderedResultKey = `offline:${{String(error)}}`;
         return;
       }}
       const jobs = payload.jobs || [];
@@ -1286,14 +1391,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const focusState = captureSpeakerFocus();
       renderedResultKey = key;
       if (job.status !== "done") {{
-        const text = job.status === "failed"
-          ? "Задача завершилась с ошибкой. Подробности в журнале."
-          : job.status === "running"
-            ? "Задача выполняется."
-            : "Задача ожидает очереди.";
         resultDetails.innerHTML = `
           <div class="result-meta">${{jobBadges(job)}}</div>
-          <div class="empty">${{text}}</div>`;
+          ${{renderPendingOrFailedJob(job)}}`;
         restoreSpeakerFocus(focusState);
         return;
       }}
@@ -1352,7 +1452,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function resultRenderKey(job) {{
       if (job.status !== "done") {{
-        return `${{job.id}}:${{job.status}}:${{job.returncode ?? ""}}`;
+        const elapsedBucket = Math.floor(elapsedSeconds(job) / 2);
+        return `${{job.id}}:${{job.status}}:${{job.returncode ?? ""}}:${{currentStageIndex(job)}}:${{meaningfulLogLines(job).length}}:${{elapsedBucket}}`;
       }}
       const files = (job.files || [])
         .map((file) => `${{file.key}}=${{file.url}}:${{file.label}}`)
@@ -1373,7 +1474,230 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
 
     function jobMeta(job) {{
+      if (job.status === "running") {{
+        return `${{currentStage(job).label}} · ${{formatDuration(elapsedSeconds(job))}} · ${{job.device || "auto"}}`;
+      }}
+      if (job.status === "queued") {{
+        return `ожидает · ${{formatDuration(elapsedSeconds(job))}} · ${{job.device || "auto"}}`;
+      }}
+      if (job.status === "failed") {{
+        return `ошибка · ${{diagnoseProblem(jobLogText(job)).title}}`;
+      }}
       return `${{clipLabel(job)}} · ${{speakerLabel(job)}} · ${{job.device || "auto"}}`;
+    }}
+
+    function renderPendingOrFailedJob(job) {{
+      if (job.status === "failed") {{
+        return renderDiagnosticBlock(diagnoseProblem(jobLogText(job), {{ job }}));
+      }}
+      if (job.status === "running") {{
+        return renderProgressBlock(job, "Задача выполняется. Результаты и спикеры появятся здесь после завершения.");
+      }}
+      return renderProgressBlock(job, "Задача ожидает очереди. Можно открыть другую задачу — эта не потеряется.");
+    }}
+
+    function renderProgressBlock(job, detail) {{
+      const stage = currentStage(job);
+      const started = job.created_at ? formatTime(job.created_at) : "сейчас";
+      const heartbeat = lastMeaningfulLog(job);
+      return `<div class="progress-block" aria-live="polite">
+        <div class="stage-top">
+          <span class="badge ${{statusClass(job.status)}}">${{escapeHtml(stage.label)}}</span>
+          <span class="badge">${{escapeHtml(formatDuration(elapsedSeconds(job)))}} · старт ${{escapeHtml(started)}}</span>
+        </div>
+        ${{renderStageList(job)}}
+        <p>${{escapeHtml(detail)}}</p>
+        <div class="heartbeat">Последний сигнал: ${{escapeHtml(heartbeat)}}</div>
+      </div>`;
+    }}
+
+    function renderStageList(job) {{
+      const activeIndex = currentStageIndex(job);
+      return `<div class="stage-list" aria-label="Этапы pipeline">${{pipelineStages.map((stage, index) => {{
+        const state = index < activeIndex ? "done" : index === activeIndex ? "active" : "";
+        return `<div class="stage-step ${{state}}">
+          <div class="stage-bar"><span></span></div>
+          <span>${{escapeHtml(stage.label)}}</span>
+        </div>`;
+      }}).join("")}}</div>`;
+    }}
+
+    function currentStage(job) {{
+      return pipelineStages[currentStageIndex(job)] || pipelineStages[0];
+    }}
+
+    function currentStageIndex(job) {{
+      if (job.status === "done") return pipelineStages.length - 1;
+      const text = meaningfulLogLines(job).join("\\n").toLowerCase();
+      if (/manifest:|clean txt:|clean markdown:|markdown:|done:|export/.test(text)) return 4;
+      if (/diarization json:|speaker sample|speaker names|склейк|merge|align|format/.test(text)) return 3;
+      if (/diarization|pyannote|vad|speaker-diarization/.test(text)) return 2;
+      if (/asr json:|asr engine:|transcrib|recogniz|gigastt|whisper/.test(text)) return 1;
+      return 0;
+    }}
+
+    function elapsedSeconds(job) {{
+      if (!job.created_at) return 0;
+      const end = job.completed_at || Date.now() / 1000;
+      return Math.max(0, Math.round(end - job.created_at));
+    }}
+
+    function formatDuration(seconds) {{
+      const total = Math.max(0, Math.round(seconds || 0));
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const secs = total % 60;
+      if (hours) return `${{hours}}:${{String(minutes).padStart(2, "0")}}:${{String(secs).padStart(2, "0")}}`;
+      return `${{minutes}}:${{String(secs).padStart(2, "0")}}`;
+    }}
+
+    function formatTime(epochSeconds) {{
+      try {{
+        return new Date(epochSeconds * 1000).toLocaleTimeString("ru-RU", {{
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }});
+      }} catch (error) {{
+        return "сейчас";
+      }}
+    }}
+
+    function jobLogText(job) {{
+      return (job.log || []).map((line) => String(line)).join("\\n");
+    }}
+
+    function meaningfulLogLines(job) {{
+      return (job.log || [])
+        .flatMap((entry) => String(entry).split(/\\r?\\n/))
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .filter((line) => !line.startsWith("$ "));
+    }}
+
+    function lastMeaningfulLog(job) {{
+      const lines = meaningfulLogLines(job);
+      return lines.length ? lines[lines.length - 1] : "Команда запущена, ждём первый лог pipeline.";
+    }}
+
+    function diagnoseProblem(rawText, options = {{}}) {{
+      const text = String(rawText || "").toLowerCase();
+      if (options.offline) {{
+        return {{
+          title: "Сервер не отвечает",
+          detail: "Интерфейс не смог получить список задач. Обычно это значит, что локальный сервер остановлен или перезапускается.",
+          actions: [
+            "Проверьте окно Terminal с сервером или запустите `Запустить Voice Recognizer.command`.",
+            "Если порт занят старым процессом, используйте `Остановить Voice Recognizer.command`, затем запустите снова.",
+            "После запуска обновите страницу браузера.",
+          ],
+        }};
+      }}
+      if (/audio file too long|maximum supported|7200s|file too long/.test(text)) {{
+        return {{
+          title: "Файл длиннее лимита ASR-движка",
+          detail: "Движок отказался брать файл целиком. Для длинных записей нужно запускать chunking или обработку по фрагментам.",
+          actions: [
+            "Запустите файл через режим длинной обработки/chunking, если он доступен.",
+            "Для быстрой проверки укажите тестовый фрагмент, например 120 секунд.",
+            "Если ошибка повторяется, переключите ASR-движок или уменьшите длительность фрагмента.",
+          ],
+        }};
+      }}
+      if (/hf_token|hugging face token|token.*missing|missing.*token|no token/.test(text)) {{
+        return {{
+          title: "Не найден Hugging Face token",
+          detail: "Диаризация pyannote требует локальный `HF_TOKEN` в `.env`. Без него ASR может пройти, но разделение по спикерам упадёт.",
+          actions: [
+            "Запустите `Настроить Voice Recognizer.command` и добавьте read-only HF token.",
+            "Проверьте `.env`: там должна быть строка `HF_TOKEN=...` без вывода токена в чат.",
+            "После исправления повторите задачу с теми же настройками.",
+          ],
+        }};
+      }}
+      if (/gatedrepo|restricted|accept.*condition|access to model|403|401|pyannote/.test(text)) {{
+        return {{
+          title: "Нет доступа к модели pyannote",
+          detail: "Токен найден, но аккаунт не имеет доступа к нужной модели pyannote или не принял условия на Hugging Face.",
+          actions: [
+            "Откройте страницу модели pyannote и примите условия доступа для используемого аккаунта.",
+            "Убедитесь, что в `.env` лежит токен именно этого аккаунта.",
+            "Запустите проверку `voice-recognizer check-pyannote-access` или `Проверить Voice Recognizer.command`.",
+          ],
+        }};
+      }}
+      if (/unsupported device|invalid value:.*device|device.*unsupported|unknown device/.test(text)) {{
+        return {{
+          title: "Неподдерживаемое устройство обработки",
+          detail: "Pipeline получил значение device, которое не поддерживается текущим backend.",
+          actions: [
+            "Выберите `auto`, `mps` или `cpu` в поле `Устройство`.",
+            "Если задача падала на MPS, повторите с `cpu`.",
+            "После смены устройства повторите задачу с теми же настройками.",
+          ],
+        }};
+      }}
+      if (/mps|metal|mps backend|mps device/.test(text)) {{
+        return {{
+          title: "Сбой на Apple Silicon/MPS",
+          detail: "Модель или один из шагов pipeline не смог выполниться на MPS. Часто помогает повтор на CPU.",
+          actions: [
+            "Повторите задачу с устройством `cpu`.",
+            "Если CPU проходит, оставьте MPS как известный риск для этой модели/записи.",
+            "Сохраните лог ошибки для отдельной оптимизации backend.",
+          ],
+        }};
+      }}
+      if (/source not found|not found in inbox|no such file|файл.*не найден/.test(text)) {{
+        return {{
+          title: "Исходный файл не найден",
+          detail: "Запись исчезла из Inbox или была переименована после постановки задачи.",
+          actions: [
+            "Нажмите `Обновить` в Inbox или перезапустите страницу.",
+            "Проверьте, что файл всё ещё лежит в `Inbox/`.",
+            "Если файл был переименован, выберите его заново и поставьте новую задачу.",
+          ],
+        }};
+      }}
+      if (/ffmpeg|ffprobe/.test(text) && /not found|no such file|failed|error/.test(text)) {{
+        return {{
+          title: "Проблема с ffmpeg/ffprobe",
+          detail: "Аудио не удалось подготовить. Обычно это означает, что ffmpeg не установлен или файл повреждён.",
+          actions: [
+            "Запустите `Настроить Voice Recognizer.command` и разрешите установку ffmpeg.",
+            "Проверьте файл командой `Проверить Voice Recognizer.command`.",
+            "Попробуйте другой аудиофайл, если проблема только у одной записи.",
+          ],
+        }};
+      }}
+      if (/gigastt|gigaam|onnx|vocab|model/.test(text) && /missing|not found|no such file|failed|error/.test(text)) {{
+        return {{
+          title: "Проблема с моделью GigaSTT/GigaAM",
+          detail: "ASR-движок не нашёл бинарник или файлы модели.",
+          actions: [
+            "Запустите `Настроить Voice Recognizer.command` и разрешите setup GigaSTT.",
+            "Проверьте наличие файлов модели через `Проверить Voice Recognizer.command`.",
+            "Временно переключите ASR-движок, если нужно срочно обработать запись.",
+          ],
+        }};
+      }}
+      return {{
+        title: "Задача завершилась с ошибкой",
+        detail: "Pipeline остановился. Ниже указаны безопасные следующие шаги; технические подробности остаются в журнале.",
+        actions: [
+          "Скопируйте последние строки журнала для диагностики.",
+          "Запустите `Проверить Voice Recognizer.command`, чтобы проверить окружение и модели.",
+          "Попробуйте короткий тест-фрагмент или повтор на CPU, если ошибка связана с ресурсами.",
+        ],
+      }};
+    }}
+
+    function renderDiagnosticBlock(problem) {{
+      return `<div class="diagnostic-block" role="alert">
+        <h3>${{escapeHtml(problem.title)}}</h3>
+        <p>${{escapeHtml(problem.detail)}}</p>
+        <ul class="next-actions">${{problem.actions.map((action) => `<li>${{escapeHtml(action)}}</li>`).join("")}}</ul>
+      </div>`;
     }}
 
     function clipLabel(job) {{
