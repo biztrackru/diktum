@@ -8,7 +8,7 @@ VENV_DIR="$WORKSPACE_DIR/.venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
 ENV_FILE="$WORKSPACE_DIR/.env"
 EXAMPLE_ENV="$APP_DIR/.env.example"
-INBOX_DIR="$WORKSPACE_DIR/inbox"
+INBOX_DIR="$WORKSPACE_DIR/Inbox"
 OUTPUT_DIR="$WORKSPACE_DIR/outputs/pipeline"
 ASSUME_YES="${VOICE_RECOGNIZER_ASSUME_YES:-0}"
 PAUSE_ON_EXIT="${VOICE_RECOGNIZER_PAUSE_ON_EXIT:-1}"
@@ -424,7 +424,7 @@ if [[ -n "$PYTHON_BIN" && -x "$PYTHON_BIN" ]]; then
   ensure_venv_and_dependencies "$PYTHON_BIN" || true
 fi
 mkdir -p "$INBOX_DIR" "$OUTPUT_DIR"
-ok "Папки inbox и outputs подготовлены."
+ok "Папки Inbox и outputs подготовлены."
 ensure_env_file || true
 ensure_gigastt || true
 check_pyannote_access || true

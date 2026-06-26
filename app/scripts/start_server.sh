@@ -9,11 +9,15 @@ PORT="${VOICE_RECOGNIZER_PORT:-8765}"
 OPEN_BROWSER="${VOICE_RECOGNIZER_OPEN_BROWSER:-1}"
 PAUSE_ON_EXIT="${VOICE_RECOGNIZER_PAUSE_ON_EXIT:-1}"
 PYTHON="$WORKSPACE_DIR/.venv/bin/python"
-INBOX_DIR="${VOICE_RECOGNIZER_INBOX:-inbox}"
+INBOX_DIR="${VOICE_RECOGNIZER_INBOX:-Inbox}"
 OUTPUT_DIR="${VOICE_RECOGNIZER_OUTPUT_DIR:-outputs/pipeline}"
 URL="http://$HOST:$PORT/"
 
 cd "$WORKSPACE_DIR" || exit 1
+
+if [[ -z "${VOICE_RECOGNIZER_INBOX:-}" && ! -d "$INBOX_DIR" && -d "inbox" ]]; then
+  INBOX_DIR="inbox"
+fi
 
 pause_before_close() {
   if [[ "$PAUSE_ON_EXIT" == "0" ]]; then

@@ -26,18 +26,18 @@ Definition of "normal local product":
 
 Scope:
 
+- `app/scripts/doctor_local_mac.sh`
 - `app/scripts/setup_local_mac.sh`
-- `Настроить Voice Recognizer.command`
-- `docs/implementation-plan.md`
-- `docs/local-mac-product-plan.md`
-- `README.md`
+- `app/scripts/start_server.sh`
+- `Проверить Voice Recognizer.command`
+- minimal README/task-board updates for this doctor task
 
 Goal:
 
-- реализовать первый double-click setup для локального Mac-продукта;
-- учесть Apple Silicon M5/32GB как целевую машину;
-- спрашивать разрешение перед установкой Homebrew/ffmpeg/dependencies/models;
-- использовать локальный `.env` с read-only HF token без вывода секрета.
+- реализовать read-only doctor для локальной установки;
+- ничего не устанавливать, не скачивать и не менять в пользовательских файлах;
+- дать понятный отчет по Python, ffmpeg, моделям, `.env`, pyannote и портам.
+- привести setup/start к единому дефолту `Inbox` с fallback на старый `inbox`.
 
 ### Claude Code
 
@@ -66,7 +66,7 @@ Do not edit code yet. Review the local Mac product plan and propose the smallest
    - detect GigaSTT binary and model files;
    - detect HF token presence without printing it;
    - show clear next actions.
-   - status: first double-click setup script exists, separate doctor command still pending.
+   - status: read-only doctor script exists and passes local smoke check.
 
 2. Local setup launcher:
    - double-clickable setup `.command`;
