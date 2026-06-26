@@ -26,18 +26,18 @@ Definition of "normal local product":
 
 Scope:
 
-- `AGENTS.md`
-- `CLAUDE.md`
-- `.agents/`
+- `app/scripts/setup_local_mac.sh`
+- `Настроить Voice Recognizer.command`
 - `docs/implementation-plan.md`
 - `docs/local-mac-product-plan.md`
 - `README.md`
 
 Goal:
 
-- подготовить репозиторий к безопасной параллельной работе Codex + Claude Code;
-- отложить self-host;
-- определить путь к локальному Mac-продукту.
+- реализовать первый double-click setup для локального Mac-продукта;
+- учесть Apple Silicon M5/32GB как целевую машину;
+- спрашивать разрешение перед установкой Homebrew/ffmpeg/dependencies/models;
+- использовать локальный `.env` с read-only HF token без вывода секрета.
 
 ### Claude Code
 
@@ -66,6 +66,7 @@ Do not edit code yet. Review the local Mac product plan and propose the smallest
    - detect GigaSTT binary and model files;
    - detect HF token presence without printing it;
    - show clear next actions.
+   - status: first double-click setup script exists, separate doctor command still pending.
 
 2. Local setup launcher:
    - double-clickable setup `.command`;
@@ -73,6 +74,7 @@ Do not edit code yet. Review the local Mac product plan and propose the smallest
    - installs dependencies;
    - runs model setup or explains manual model download;
    - ends with "Start Voice Recognizer".
+   - status: first launcher exists as `Настроить Voice Recognizer.command`.
 
 3. UI upload completion:
    - keep uploaded file selected;

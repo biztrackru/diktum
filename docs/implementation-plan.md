@@ -24,7 +24,7 @@
 
 ## Этап 1.5. Локальная установка на Mac
 
-Статус: запланировано.
+Статус: в работе.
 
 Цель: пользователь без технического опыта может подготовить и запустить приложение через double-click файлы.
 
@@ -37,8 +37,8 @@ Research-gate перед реализацией:
 
 Задачи:
 
-- добавить `Setup Voice Recognizer.command`;
-- добавить `app/scripts/setup_local_mac.sh`;
+- добавить `Настроить Voice Recognizer.command`; готово;
+- добавить `app/scripts/setup_local_mac.sh`; готово;
 - добавить local doctor/preflight report;
 - проверить Python, `.venv`, ffmpeg/ffprobe, GigaSTT binary, модели, HF token;
 - не печатать токены в лог;
