@@ -1184,6 +1184,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                   <button class="preset-button" type="button" data-start="0" data-duration="30">0:30</button>
                   <button class="preset-button" type="button" data-start="0" data-duration="120">2:00</button>
                   <button class="preset-button" type="button" data-start="0" data-duration="300">5:00</button>
+                  <span class="badge" id="clip-readout" aria-live="polite">0:00-2:00</span>
                 </div>
               </div>
               <div class="grid-2">
@@ -1312,6 +1313,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const modeButtons = document.querySelectorAll(".segment[data-mode]");
     const workflowSteps = document.querySelectorAll(".workflow-step[data-workflow-step]");
     const clipTools = document.querySelector("#clip-tools");
+    const clipReadout = document.querySelector("#clip-readout");
     const batchTools = document.querySelector("#batch-tools");
     const batchSelectionCount = document.querySelector("#batch-selection-count");
     const batchActionButtons = document.querySelectorAll("[data-batch-action]");
@@ -1330,9 +1332,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let runMode = "single";
     let speakerMode = "auto";
     let diskResults = [];
+    let inboxFiles = [];
     let batchSelectedFiles = new Set();
     let batchKnownFiles = new Set();
     let batchSelectionReady = false;
+    let clipValidationOk = true;
     const speakerNameDrafts = new Map();
     const pipelineStages = [
       {{ key: "audio", label: "Аудио" }},
@@ -1365,6 +1369,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         speakerInputs.exact.form.elements.duration.value = "2:00";
       }}
       if (runMode === "batch") setSpeakerMode("auto");
+      updateClipReadout();
       updateBatchSelectionSummary();
       if (activeView !== "job" || !activeJobId) updateWorkflow();
     }}
@@ -1461,6 +1466,49 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       return `${{minutes}}:${{String(rest).padStart(2, "0")}}`;
     }}
 
+    function selectedInboxFile() {{
+      return inboxFiles.find((file) => file.name === sourceSelect.value) || null;
+    }}
+
+    function updateClipReadout() {{
+      if (!clipReadout) return;
+      if (runMode !== "clip") {{
+        clipValidationOk = true;
+        clipReadout.className = "badge";
+        clipReadout.textContent = "полный файл";
+        updateRunAvailability();
+        return;
+      }}
+      try {{
+        const start = Number(parseFlexibleTime(form.elements.start.value) || 0);
+        const duration = Number(parseFlexibleTime(form.elements.duration.value) || 120);
+        if (!Number.isFinite(start) || !Number.isFinite(duration) || start < 0 || duration <= 0) {{
+          throw new Error("Некорректное время");
+        }}
+        const end = start + duration;
+        const file = selectedInboxFile();
+        const fileDuration = Number(file?.duration || 0);
+        const outsideFile = fileDuration > 0 && end > fileDuration + 0.5;
+        clipValidationOk = !outsideFile;
+        clipReadout.className = `badge ${{outsideFile ? "failed" : "running"}}`;
+        clipReadout.textContent = outsideFile
+          ? `фрагмент за пределами файла · файл ${{formatDuration(fileDuration)}}`
+          : `${{formatDuration(start)}}-${{formatDuration(end)}}`;
+      }} catch (error) {{
+        clipValidationOk = false;
+        clipReadout.className = "badge failed";
+        clipReadout.textContent = String(error.message || error);
+      }}
+      updateRunAvailability();
+    }}
+
+    function updateRunAvailability() {{
+      const hasFiles = sourceSelect.options.length > 0;
+      const selected = batchSelectedSources().length || batchSelectedFiles.size;
+      runButton.disabled = !hasFiles || (runMode === "batch" && selected === 0) || (runMode === "clip" && !clipValidationOk);
+      queueAllButton.disabled = !hasFiles;
+    }}
+
     fileList.addEventListener("click", async (event) => {{
       const resultTag = event.target.closest(".processed-tag");
       if (resultTag && resultTag.dataset.resultId) {{
@@ -1481,6 +1529,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       sourceSelect.value = row.dataset.file;
       setRunMode("single");
       syncFileSelection();
+      updateClipReadout();
       updateWorkflow();
     }});
     fileList.addEventListener("change", (event) => {{
@@ -1492,8 +1541,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     sourceSelect.addEventListener("change", () => {{
       setRunMode("single");
       syncFileSelection();
+      updateClipReadout();
       updateWorkflow();
     }});
+    form.elements.start.addEventListener("input", updateClipReadout);
+    form.elements.duration.addEventListener("input", updateClipReadout);
     modeButtons.forEach((button) => {{
       button.addEventListener("click", () => setRunMode(button.dataset.mode));
     }});
@@ -1548,8 +1600,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }} catch (error) {{
         logNode.textContent = String(error);
       }} finally {{
-        runButton.disabled = false;
-        queueAllButton.disabled = false;
+        updateRunAvailability();
       }}
     }}
 
@@ -1577,8 +1628,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }} catch (error) {{
         logNode.textContent = String(error);
       }} finally {{
-        runButton.disabled = false;
-        queueAllButton.disabled = false;
+        updateRunAvailability();
       }}
     }}
 
@@ -1638,6 +1688,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         return;
       }}
       const files = payload.files || [];
+      inboxFiles = files;
       syncBatchSelectionWithFiles(files);
       const previous = preferredSource || sourceSelect.value;
       sourceSelect.innerHTML = files.map((file) => (
@@ -1654,11 +1705,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       const hasFiles = files.length > 0;
       sourceSelect.disabled = !hasFiles || runMode === "batch";
-      runButton.disabled = !hasFiles;
-      queueAllButton.disabled = !hasFiles;
       syncFileSelection();
       renderBatchChecks();
+      updateClipReadout();
       updateBatchSelectionSummary();
+      updateRunAvailability();
       updateWorkflow();
     }}
 
@@ -1740,7 +1791,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const selected = batchSelectedSources().length || batchSelectedFiles.size;
       const total = sourceSelect.options.length;
       batchSelectionCount.textContent = `${{selected}} из ${{total}} выбрано`;
-      runButton.disabled = total === 0 || (runMode === "batch" && selected === 0);
+      updateRunAvailability();
     }}
 
     async function loadJobs() {{

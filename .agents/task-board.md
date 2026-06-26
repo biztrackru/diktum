@@ -211,6 +211,27 @@ Checks:
 - backend smoke: `_apply_result_speaker_names` updates a short disk result and logs `Using ASR JSON` + `Using diarization JSON`;
 - in-app Browser on `http://127.0.0.1:8782/`: disk result opens, speaker name input applies via `POST /api/results/<id>/speaker-names`, label updates, console clean.
 
+### Implementation Clip Validation
+
+Status: DELIVERED (2026-06-26), Codex. Finish test-fragment validation UX.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Clip Validation` block in `.agents/task-board.md`
+
+Goal:
+
+- show readable test-fragment range after `mm:ss` parsing;
+- validate selected clip against known Inbox duration;
+- block run with a local message when the clip is outside the file.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- in-app Browser on `http://127.0.0.1:8782/`: `2:00` shows `0:00-2:00`, `99:00` shows local out-of-file warning and disables run, `1:30` re-enables run, console clean;
+- mobile viewport 390px: no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
