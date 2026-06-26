@@ -105,6 +105,27 @@ Checks:
 - extracted rendered HTML script and ran `node --check /tmp/voice-recognizer-f3.js`;
 - Browser/IAB on `http://127.0.0.1:8782/`: running job shows stage rail, elapsed/start and heartbeat; failed job shows diagnostic block with `role=alert`; desktop 1280px and mobile 390px have no horizontal overflow; console clean.
 
+### Implementation F15/F16
+
+Status: DELIVERED (2026-06-26), Codex. UX implementation portion 3 from `.agents/next-task-ux-implementation.md`.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation F15/F16` block in `.agents/task-board.md`
+
+Goal:
+
+- F15: add a disk-backed results library from `outputs/**/*.manifest.json`;
+- F16: mark Inbox files that already have matching results and open those results from the UI;
+- keep the change local to the web UI unless a manifest/pipeline blocker appears.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- API smoke with `PYTHONPATH=app/src`: 15 disk results found, 5 Inbox files marked processed;
+- Chrome/Playwright on `http://127.0.0.1:8782/`: results library renders, Inbox processed badge opens a result, export link returns `200`, console clean, desktop/mobile no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import cgi
+import hashlib
 import html
 import json
 import os
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -111,7 +113,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             self._send_html(self._render_index(), head_only=head_only)
             return
         if parsed.path == "/api/inbox":
-            self._send_json({"files": _inbox_files_payload(self.web_config.inbox)}, head_only=head_only)
+            results = _result_list(self.web_config.root)
+            self._send_json({"files": _inbox_files_payload(self.web_config.inbox, results)}, head_only=head_only)
+            return
+        if parsed.path == "/api/results":
+            self._send_json({"results": _result_list(self.web_config.root)}, head_only=head_only)
             return
         if parsed.path == "/api/jobs":
             self._send_json({"jobs": _job_list(self.web_config.root)}, head_only=head_only)
@@ -198,8 +204,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         rows = "\n".join(
             f"""
             <button class="file-row" type="button" data-file="{html.escape(path.name)}">
-              <span>{html.escape(path.name)}</span>
-              <span>{_file_size_label(path)}</span>
+              <span class="file-main">
+                <span class="file-name">{html.escape(path.name)}</span>
+              </span>
+              <span class="file-size">{_file_size_label(path)}</span>
             </button>
             """
             for path in files
@@ -424,6 +432,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .segment:focus-visible,
     .file-row:focus-visible,
     .job-row:focus-visible,
+    .result-row:focus-visible,
     .link-chip:focus-visible {{
       outline: 2px solid var(--accent);
       outline-offset: 2px;
@@ -550,7 +559,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       width: 100%;
       min-height: 42px;
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       align-items: center;
       border: 1px solid var(--border);
@@ -561,7 +570,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       text-align: left;
       cursor: pointer;
     }}
-    .file-row span:first-child {{
+    .file-row.processed {{
+      border-color: rgba(11, 127, 114, 0.28);
+    }}
+    .file-main {{
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }}
+    .file-name {{
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -569,10 +587,23 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-size: 13px;
       font-weight: 660;
     }}
-    .file-row span:last-child {{
+    .file-size {{
       color: var(--muted);
       font-size: 12px;
       font-weight: 650;
+      white-space: nowrap;
+    }}
+    .processed-tag {{
+      flex: 0 0 auto;
+      min-height: 22px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0 7px;
+      background: rgba(11, 127, 114, 0.11);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
     }}
     .file-row.active {{
       border-color: var(--accent);
@@ -653,6 +684,54 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-size: 12px;
       font-weight: 780;
       text-decoration: none;
+    }}
+    .result-list {{
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      min-height: 120px;
+      max-height: 28vh;
+      overflow: auto;
+    }}
+    .result-row {{
+      width: 100%;
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+    }}
+    .result-row.active {{
+      border-color: var(--accent);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }}
+    .result-main {{
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }}
+    .result-name {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 720;
+    }}
+    .result-meta-line {{
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }}
     .result-body {{
       display: grid;
@@ -844,6 +923,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       .job-row {{
         grid-template-columns: 78px 1fr;
       }}
+      .result-row {{
+        grid-template-columns: 76px 1fr;
+      }}
       .job-link {{
         grid-column: 2;
       }}
@@ -994,6 +1076,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         </section>
         <section class="panel">
           <div class="panel-head">
+            <div class="panel-title">
+              <h2>Готовые</h2>
+            </div>
+            <span class="badge" id="result-count">0 готово</span>
+          </div>
+          <div class="result-list" id="results-list"><div class="empty">Готовые результаты появятся здесь после обработки</div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">
             <h2>Журнал</h2>
             <span class="badge" id="active-job">-</span>
           </div>
@@ -1024,8 +1115,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const sourceSelect = document.querySelector("#source-select");
     const fileList = document.querySelector("#file-list");
     const jobsNode = document.querySelector("#jobs");
+    const resultsList = document.querySelector("#results-list");
     const logNode = document.querySelector("#log");
     const jobCount = document.querySelector("#job-count");
+    const resultCount = document.querySelector("#result-count");
     const queuedCount = document.querySelector("#queued-count");
     const runningCount = document.querySelector("#running-count");
     const doneCount = document.querySelector("#done-count");
@@ -1042,9 +1135,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       max: document.querySelector('input[name="max_speakers"]'),
     }};
     let activeJobId = null;
+    let activeResultId = null;
+    let activeView = "job";
     let renderedResultKey = null;
     let runMode = "single";
     let speakerMode = "auto";
+    let diskResults = [];
     const speakerNameDrafts = new Map();
     const pipelineStages = [
       {{ key: "audio", label: "Аудио" }},
@@ -1109,7 +1205,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       delete data.num_speakers;
     }}
 
-    fileList.addEventListener("click", (event) => {{
+    fileList.addEventListener("click", async (event) => {{
+      const resultTag = event.target.closest(".processed-tag");
+      if (resultTag && resultTag.dataset.resultId) {{
+        event.preventDefault();
+        await openDiskResult(resultTag.dataset.resultId);
+        return;
+      }}
       const row = event.target.closest(".file-row");
       if (!row) return;
       sourceSelect.value = row.dataset.file;
@@ -1127,8 +1229,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     speakerModeButtons.forEach((button) => {{
       button.addEventListener("click", () => setSpeakerMode(button.dataset.speakerMode));
     }});
-    document.querySelector("#refresh-button").addEventListener("click", loadJobs);
-    document.querySelector("#refresh-button").addEventListener("click", () => loadInbox());
+    document.querySelector("#refresh-button").addEventListener("click", async () => {{
+      await loadResults();
+      await loadInbox();
+      await loadJobs();
+    }});
     queueAllButton.addEventListener("click", () => queueAllJobs());
     uploadForm.addEventListener("submit", async (event) => {{
       event.preventDefault();
@@ -1150,6 +1255,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       try {{
         const payload = await createJobForSource(sourceSelect.value);
         activeJobId = payload.id;
+        activeResultId = null;
+        activeView = "job";
         await loadJobs();
       }} catch (error) {{
         logNode.textContent = String(error);
@@ -1174,6 +1281,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           if (!firstJobId) firstJobId = payload.id;
         }}
         if (firstJobId) activeJobId = firstJobId;
+        activeResultId = null;
+        activeView = "job";
         setRunMode("batch");
         await loadJobs();
       }} catch (error) {{
@@ -1245,10 +1354,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       )).join("");
       fileList.innerHTML = files.length
         ? files.map((file) => (
-          `<button class="file-row" type="button" data-file="${{escapeAttribute(file.name)}}">
-            <span>${{escapeHtml(file.name)}}</span>
-            <span>${{escapeHtml(file.size_label)}}</span>
-          </button>`
+          renderInboxFile(file)
         )).join("")
         : '<div class="empty">Inbox пуст</div>';
       fileCountNode.textContent = `${{files.length}} файлов`;
@@ -1260,6 +1366,27 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       runButton.disabled = !hasFiles;
       queueAllButton.disabled = !hasFiles;
       syncFileSelection();
+    }}
+
+    function renderInboxFile(file) {{
+      const results = file.results || [];
+      const latest = results.length ? results[0] : null;
+      const processed = latest
+        ? `<span class="processed-tag" data-result-id="${{escapeAttribute(latest.id)}}" title="Открыть готовый результат">${{escapeHtml(inboxResultLabel(results))}}</span>`
+        : "";
+      return `<button class="file-row ${{latest ? "processed" : ""}}" type="button" data-file="${{escapeAttribute(file.name)}}">
+        <span class="file-main">
+          <span class="file-name">${{escapeHtml(file.name)}}</span>
+          ${{processed}}
+        </span>
+        <span class="file-size">${{escapeHtml(file.size_label)}}</span>
+      </button>`;
+    }}
+
+    function inboxResultLabel(results) {{
+      if (!results || !results.length) return "";
+      if (results.length > 1) return `${{results.length}} готово`;
+      return results[0].kind === "clip" ? "фрагмент готов" : "готово";
     }}
 
     async function loadJobs() {{
@@ -1281,11 +1408,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       updateQueueSummary(jobs);
       if (!jobs.length) {{
         jobsNode.innerHTML = '<div class="empty">Нет задач</div>';
-        resultDetails.innerHTML = '<div class="empty">Нет выбранной задачи</div>';
-        setStatusBadge(resultState, "", "-");
-        logNode.textContent = "";
-        setStatusBadge(activeJobNode, "", "-");
-        renderedResultKey = null;
+        if (activeView !== "result") {{
+          resultDetails.innerHTML = '<div class="empty">Нет выбранной задачи</div>';
+          setStatusBadge(resultState, "", "-");
+          logNode.textContent = "";
+          setStatusBadge(activeJobNode, "", "-");
+          renderedResultKey = null;
+        }}
         return;
       }}
       const previousActiveJobId = activeJobId;
@@ -1293,17 +1422,78 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const active = jobs.find((job) => job.id === activeJobId) || jobs[0];
       activeJobId = active.id;
       jobsNode.innerHTML = jobs.map((job) => renderJob(job)).join("");
-      setStatusBadge(activeJobNode, statusClass(active.status), statusLabel(active.status));
-      setStatusBadge(resultState, statusClass(active.status), statusLabel(active.status));
-      logNode.textContent = active.log.join("");
-      logNode.scrollTop = logNode.scrollHeight;
-      renderResults(active, {{ force: active.id !== previousActiveJobId }});
+      if (activeView !== "result") {{
+        setStatusBadge(activeJobNode, statusClass(active.status), statusLabel(active.status));
+        setStatusBadge(resultState, statusClass(active.status), statusLabel(active.status));
+        logNode.textContent = active.log.join("");
+        logNode.scrollTop = logNode.scrollHeight;
+        renderResults(active, {{ force: active.id !== previousActiveJobId }});
+      }}
       document.querySelectorAll(".job-row").forEach((row) => {{
         row.addEventListener("click", () => {{
+          activeView = "job";
           activeJobId = row.dataset.job;
+          activeResultId = null;
+          renderResultList();
           loadJobs();
         }});
       }});
+    }}
+
+    async function loadResults(preferredResultId = null) {{
+      let payload;
+      try {{
+        const response = await fetch("/api/results");
+        payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "request failed");
+      }} catch (error) {{
+        resultCount.textContent = "нет доступа";
+        resultsList.innerHTML = '<div class="empty">Не удалось прочитать outputs</div>';
+        logNode.textContent = String(error);
+        return;
+      }}
+      diskResults = payload.results || [];
+      renderResultList();
+      if (preferredResultId) {{
+        openDiskResult(preferredResultId);
+      }}
+    }}
+
+    function renderResultList() {{
+      resultCount.textContent = `${{diskResults.length}} готово`;
+      if (!diskResults.length) {{
+        resultsList.innerHTML = '<div class="empty">Готовые результаты появятся здесь после обработки</div>';
+        return;
+      }}
+      resultsList.innerHTML = diskResults.map((result) => (
+        `<button class="result-row ${{activeView === "result" && result.id === activeResultId ? "active" : ""}}" type="button" data-result-id="${{escapeAttribute(result.id)}}">
+          <span class="badge ${{statusClass(result.status)}}">${{escapeHtml(resultKindLabel(result.kind))}}</span>
+          <span class="result-main">
+            <span class="result-name" title="${{escapeHtml(result.source_name)}}">${{escapeHtml(result.source_name)}}</span>
+            <span class="result-meta-line">${{escapeHtml(resultMeta(result))}}</span>
+          </span>
+          <span class="badge">${{escapeHtml(formatDateTime(result.completed_at))}}</span>
+        </button>`
+      )).join("");
+      document.querySelectorAll(".result-row").forEach((row) => {{
+        row.addEventListener("click", () => openDiskResult(row.dataset.resultId));
+      }});
+    }}
+
+    function openDiskResult(resultId) {{
+      const result = diskResults.find((item) => item.id === resultId);
+      if (!result) {{
+        logNode.textContent = "Готовый результат не найден. Нажмите Обновить.";
+        return;
+      }}
+      activeView = "result";
+      activeResultId = result.id;
+      renderedResultKey = null;
+      setStatusBadge(activeJobNode, "done", "готовый");
+      setStatusBadge(resultState, statusClass(result.status), statusLabel(result.status));
+      logNode.textContent = (result.log || []).join("");
+      renderResultList();
+      renderResults(result, {{ force: true }});
     }}
 
     function updateQueueSummary(jobs) {{
@@ -1375,7 +1565,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function renderJob(job) {{
       const cls = statusClass(job.status);
       const link = job.markdown_url ? `<a class="job-link" href="${{job.markdown_url}}" target="_blank" rel="noreferrer">Markdown</a>` : "";
-      return `<button class="job-row ${{job.id === activeJobId ? "active" : ""}}" type="button" data-job="${{job.id}}">
+      return `<button class="job-row ${{activeView === "job" && job.id === activeJobId ? "active" : ""}}" type="button" data-job="${{job.id}}">
         <span class="badge ${{cls}}">${{statusLabel(job.status)}}</span>
         <span class="job-main">
           <span class="job-name" title="${{escapeHtml(job.source_name)}}">${{escapeHtml(job.source_name)}}</span>
@@ -1390,7 +1580,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (!options.force && key === renderedResultKey) return;
       const focusState = captureSpeakerFocus();
       renderedResultKey = key;
-      if (job.status !== "done") {{
+      if (!job.is_disk_result && job.status !== "done") {{
         resultDetails.innerHTML = `
           <div class="result-meta">${{jobBadges(job)}}</div>
           ${{renderPendingOrFailedJob(job)}}`;
@@ -1409,14 +1599,17 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             <input class="speaker-name-input" data-job="${{escapeAttribute(job.id)}}" data-speaker="${{escapeAttribute(sample.speaker)}}" value="${{escapeAttribute(speakerNameValue(job, sample))}}" placeholder="Имя спикера ${{sample.speaker}}">
           </div>`).join("")
         : '<div class="empty">Voice samples пока не найдены</div>';
+      const speakerActions = job.is_disk_result
+        ? '<div class="empty">Результат открыт из outputs. Переименование спикеров без пересчёта добавим отдельным шагом.</div>'
+        : `<div class="actions">
+            <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
+          </div>`;
       resultDetails.innerHTML = `
         <div class="result-meta">${{jobBadges(job)}}</div>
         ${{fileLinks}}
         <div class="speaker-editor">
           ${{speakerRows}}
-          <div class="actions">
-            <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
-          </div>
+          ${{speakerActions}}
         </div>`;
       const applyButton = document.querySelector("#apply-speaker-names");
       if (applyButton) {{
@@ -1484,6 +1677,20 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         return `ошибка · ${{diagnoseProblem(jobLogText(job)).title}}`;
       }}
       return `${{clipLabel(job)}} · ${{speakerLabel(job)}} · ${{job.device || "auto"}}`;
+    }}
+
+    function resultMeta(result) {{
+      const parts = [
+        resultKindLabel(result.kind),
+        speakerLabel(result),
+        result.asr_engine || "ASR",
+        result.output_dir || "outputs",
+      ];
+      return parts.filter(Boolean).join(" · ");
+    }}
+
+    function resultKindLabel(kind) {{
+      return kind === "clip" ? "фрагмент" : "полный";
     }}
 
     function renderPendingOrFailedJob(job) {{
@@ -1560,6 +1767,20 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         }});
       }} catch (error) {{
         return "сейчас";
+      }}
+    }}
+
+    function formatDateTime(epochSeconds) {{
+      if (!epochSeconds) return "-";
+      try {{
+        return new Date(epochSeconds * 1000).toLocaleString("ru-RU", {{
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }});
+      }} catch (error) {{
+        return "-";
       }}
     }}
 
@@ -1717,6 +1938,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function statusClass(status) {{
       if (status === "done") return "done";
+      if (status === "partial") return "running";
       if (status === "failed") return "failed";
       if (status === "running") return "running";
       return "queued";
@@ -1724,6 +1946,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function statusLabel(status) {{
       if (status === "done") return "done";
+      if (status === "partial") return "partial";
       if (status === "failed") return "failed";
       if (status === "running") return "running";
       return "queued";
@@ -1749,6 +1972,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     setSpeakerMode("auto");
     setRunMode("single");
     syncFileSelection();
+    loadResults();
+    loadInbox();
     loadJobs();
     setInterval(loadJobs, 2000);
   </script>
@@ -1990,6 +2215,95 @@ def _append_job_log(job_id: str, line: str) -> None:
             job.log = job.log[-MAX_LOG_LINES:]
 
 
+def _result_list(root: Path) -> list[dict[str, object]]:
+    outputs_dir = (root / "outputs").resolve()
+    if not outputs_dir.exists():
+        return []
+    manifests = sorted(
+        outputs_dir.glob("**/*.manifest.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    results = []
+    for manifest_path in manifests:
+        payload = _result_payload(manifest_path, root)
+        if payload:
+            results.append(payload)
+    return results
+
+
+def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None:
+    manifest = _read_manifest(manifest_path)
+    if not manifest:
+        return None
+    try:
+        completed_at = manifest_path.stat().st_mtime
+    except OSError:
+        completed_at = time.time()
+    files = _manifest_files(manifest, root)
+    samples = _manifest_samples(manifest, root)
+    clip_start, clip_duration = _clip_window_from_manifest_path(manifest_path)
+    source_name = _manifest_source_name(manifest, manifest_path)
+    markdown_url = next((file["url"] for file in files if file.get("key") == "detailed_markdown"), None)
+    speaker_count = _optional_int_value(manifest.get("speaker_count"))
+    return {
+        "id": _result_id(manifest_path, root),
+        "source_name": source_name,
+        "source": str(manifest.get("source") or ""),
+        "status": "done" if files else "partial",
+        "returncode": 0 if files else None,
+        "created_at": completed_at,
+        "completed_at": completed_at,
+        "log": [f"Готовый результат из {_relative_display(root, manifest_path)}\n"],
+        "asr_engine": str(manifest.get("asr_engine") or ""),
+        "device": str(manifest.get("device") or ""),
+        "speaker_mode": "auto",
+        "start": clip_start,
+        "duration": clip_duration,
+        "recording_duration": _optional_float_value(manifest.get("duration")),
+        "num_speakers": speaker_count,
+        "min_speakers": None,
+        "max_speakers": None,
+        "output_dir": _relative_display(root, manifest_path.parent),
+        "markdown_url": markdown_url,
+        "files": files,
+        "speaker_samples": samples,
+        "speaker_names": manifest.get("speaker_names", {}),
+        "kind": "clip" if clip_duration is not None else "full",
+        "manifest_url": _output_url(root, manifest_path),
+        "is_disk_result": True,
+    }
+
+
+def _result_id(manifest_path: Path, root: Path) -> str:
+    try:
+        identifier = str(manifest_path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        identifier = str(manifest_path.resolve())
+    digest = hashlib.sha1(identifier.encode("utf-8")).hexdigest()[:16]
+    return f"result-{digest}"
+
+
+def _manifest_source_name(manifest: dict[str, object], manifest_path: Path) -> str:
+    source = manifest.get("source")
+    if source:
+        return Path(str(source).replace("\\", "/")).name
+    return manifest_path.name.removesuffix(".manifest.json")
+
+
+def _clip_window_from_manifest_path(manifest_path: Path) -> tuple[float | None, float | None]:
+    name = manifest_path.name.removesuffix(".manifest.json")
+    parts = name.rsplit("_", 2)
+    if len(parts) != 3 or not parts[1].endswith("s") or not parts[2].endswith("s"):
+        return None, None
+    try:
+        start = float(parts[1].removesuffix("s"))
+        duration = float(parts[2].removesuffix("s"))
+    except ValueError:
+        return None, None
+    return start, duration
+
+
 def _job_list(root: Path) -> list[dict[str, object]]:
     with JOBS_LOCK:
         jobs = sorted(JOBS.values(), key=lambda item: item.created_at, reverse=True)
@@ -2095,15 +2409,48 @@ def _resolve_source(inbox: Path, source_name: str) -> Path:
     return files[source_name]
 
 
-def _inbox_files_payload(inbox: Path) -> list[dict[str, object]]:
-    return [_inbox_file_payload(path) for path in iter_media_files(inbox)]
+def _inbox_files_payload(inbox: Path, results: list[dict[str, object]] | None = None) -> list[dict[str, object]]:
+    results_by_source = _results_by_source(results or [])
+    return [
+        _inbox_file_payload(path, results_by_source.get(_source_match_key(path.name), []))
+        for path in iter_media_files(inbox)
+    ]
 
 
-def _inbox_file_payload(path: Path) -> dict[str, object]:
+def _inbox_file_payload(path: Path, results: list[dict[str, object]] | None = None) -> dict[str, object]:
+    result_summaries = [_inbox_result_summary(result) for result in (results or [])]
     return {
         "name": path.name,
         "size": path.stat().st_size,
         "size_label": _file_size_label(path),
+        "processed": bool(result_summaries),
+        "results": result_summaries,
+    }
+
+
+def _results_by_source(results: list[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+    by_source: dict[str, list[dict[str, object]]] = {}
+    for result in results:
+        source_name = str(result.get("source_name") or "")
+        if not source_name:
+            continue
+        by_source.setdefault(_source_match_key(source_name), []).append(result)
+    return by_source
+
+
+def _source_match_key(value: str) -> str:
+    return unicodedata.normalize("NFC", value).casefold()
+
+
+def _inbox_result_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": result.get("id"),
+        "status": result.get("status"),
+        "kind": result.get("kind"),
+        "completed_at": result.get("completed_at"),
+        "output_dir": result.get("output_dir"),
+        "file_count": len(result.get("files", [])) if isinstance(result.get("files"), list) else 0,
+        "speaker_count": len(result.get("speaker_samples", [])) if isinstance(result.get("speaker_samples"), list) else 0,
     }
 
 
@@ -2264,6 +2611,24 @@ def _resolve_output_dir(root: Path, value: str) -> Path:
     except ValueError as error:
         raise ValueError("output_dir must stay inside outputs/") from error
     return path
+
+
+def _optional_float_value(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _optional_int_value(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
 
 
 def _optional_float(value: object) -> float | None:
