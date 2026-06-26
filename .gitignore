@@ -11,6 +11,8 @@ tools/bin/
 __pycache__/
 *.py[cod]
 *$py.class
+.agents/runs/
+.agents/tmp/
 *.docx
 !docs/**/*.docx
 ~$*.docx

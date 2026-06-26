@@ -4,6 +4,13 @@
 
 Этот документ нужен для совместной работы нескольких AI-агентов над локальным проектом Voice Recognizer.
 
+Главные entrypoints для агентов:
+
+- `AGENTS.md` - общие правила для всех агентов;
+- `CLAUDE.md` - короткая инструкция для Claude Code;
+- `.agents/task-board.md` - текущие задачи, ownership и suggested prompts;
+- `.agents/review-checklist.md` - приемка diff.
+
 ## Рабочие правила
 
 - Не трогать аудио, `.env`, `.cache/`, `.models/`, `outputs/` и любые приватные документы без отдельного указания.
