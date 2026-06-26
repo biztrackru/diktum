@@ -41,17 +41,52 @@ Goal:
 
 ### Claude Code
 
-Not started.
+Status: DELIVERED (2026-06-26), ready for implementation handoff. UX/product track. Docs done; код (`web.py`) намеренно не тронут — реализация за implementation-агентом.
 
-Suggested first task:
+Deliverables: `docs/ux-audit.md` (F1–F16, вкл. персистентность/результаты + оценка S/M/L), `docs/ux/voice-recognizer-prototype.html` (эталон поведения; вид «Готовые» + бейдж «обработан → готово»), `docs/ux-acceptance-scenarios.md` (S1–S10 + матрица). Передача, приоритеты и Data contract — `.agents/handoff-ux-redesign.md`. Порядок реализации: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14.
 
-```text
-Read AGENTS.md, CLAUDE.md, docs/product-requirements.md, docs/implementation-plan.md, and docs/local-mac-product-plan.md.
+Scope (write):
 
-Do not edit code yet. Review the local Mac product plan and propose the smallest setup/installer path for a non-technical Mac user. Write your proposal to .agents/claude-local-setup-proposal.md only.
-```
+- `docs/ux-audit.md` (new)
+- `docs/ux/voice-recognizer-prototype.html` (new)
+- `docs/ux-acceptance-scenarios.md` (new)
+- `.agents/handoff-ux-redesign.md` (new)
+- this `### Claude Code` block in `.agents/task-board.md`
+
+Goal:
+
+- grounded UX-аудит фактического web UI (`app/src/voice_recognizer/web.py`) с severity / file:line / risk / fix;
+- интерактивный self-contained прототип целевого интерфейса (vanilla HTML/CSS/JS под текущий стек, без сборки), пригодный для переноса в `web.py`;
+- приёмочные UX-сценарии (Given/When/Then + ручные проверки), привязанные к `review-checklist.md` и `agent-redesign-proposal.md`.
+
+Read-only (не редактирую): `app/src/voice_recognizer/web.py` — только источник для аудита; реализацию в коде отдаю implementation-агенту через handoff.
+
+Не пересекается с активным scope Codex (`setup_local_mac.sh`, `*.command`, `implementation-plan.md`, `local-mac-product-plan.md`, `README.md`).
+
+### Implementation
+
+Status: DELIVERED (2026-06-26), Codex. UX implementation portion 1 from `.agents/next-task-ux-implementation.md`.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation` block in `.agents/task-board.md`
+
+Goal:
+
+- F1: visible keyboard focus for `.btn`, `.segment`, `.file-row`, `.job-row`, `.link-chip`;
+- F2: speaker-name inputs keep typed values, focus and caret during 2-second polling;
+- keep diff small and do not touch pipeline or UX docs.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- Browser/IAB on `http://127.0.0.1:8782/`: page loads, console clean, F2 live job regression passes after 6.9s and two polling cycles, mobile 390px has no horizontal overflow;
+- smoke job output was isolated to `outputs/ui-f2-smoke` and removed after verification.
 
 ## Next Implementation Tasks
+
+UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
 
 0. WhisperLiveKit research gate:
    - read `docs/external-projects.md` section `QuentinFuxa/WhisperLiveKit`;

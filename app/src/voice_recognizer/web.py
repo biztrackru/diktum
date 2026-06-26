@@ -420,6 +420,14 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(11, 127, 114, 0.12);
     }}
+    .btn:focus-visible,
+    .segment:focus-visible,
+    .file-row:focus-visible,
+    .job-row:focus-visible,
+    .link-chip:focus-visible {{
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }}
     input:disabled {{
       color: var(--soft);
       background: var(--surface-2);
@@ -942,6 +950,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let renderedResultKey = null;
     let runMode = "single";
     let speakerMode = "auto";
+    const speakerNameDrafts = new Map();
 
     function syncFileSelection() {{
       document.querySelectorAll(".file-row").forEach((row) => {{
@@ -1203,6 +1212,61 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       doneCount.textContent = `${{counts.done || 0}} done`;
     }}
 
+    function speakerDraftKey(jobId, speaker) {{
+      return `${{jobId}}:${{speaker}}`;
+    }}
+
+    function speakerNameValue(job, sample) {{
+      const key = speakerDraftKey(job.id, sample.speaker);
+      if (speakerNameDrafts.has(key)) return speakerNameDrafts.get(key);
+      return sample.name || "";
+    }}
+
+    function rememberSpeakerNameInput(input) {{
+      if (!input || !input.dataset) return;
+      speakerNameDrafts.set(speakerDraftKey(input.dataset.job, input.dataset.speaker), input.value);
+    }}
+
+    function clearSpeakerNameDrafts(jobId) {{
+      Array.from(speakerNameDrafts.keys()).forEach((key) => {{
+        if (key.startsWith(`${{jobId}}:`)) speakerNameDrafts.delete(key);
+      }});
+    }}
+
+    function captureSpeakerFocus() {{
+      const input = document.activeElement;
+      if (!input || !input.classList || !input.classList.contains("speaker-name-input")) return null;
+      rememberSpeakerNameInput(input);
+      return {{
+        jobId: input.dataset.job,
+        speaker: input.dataset.speaker,
+        start: input.selectionStart,
+        end: input.selectionEnd,
+      }};
+    }}
+
+    function restoreSpeakerFocus(state) {{
+      if (!state) return;
+      const input = Array.from(document.querySelectorAll(".speaker-name-input")).find((candidate) => (
+        candidate.dataset.job === state.jobId && candidate.dataset.speaker === state.speaker
+      ));
+      if (!input) return;
+      input.focus();
+      if (Number.isInteger(state.start) && Number.isInteger(state.end)) {{
+        try {{
+          input.setSelectionRange(state.start, state.end);
+        }} catch (error) {{
+          // Some input types do not support selection ranges.
+        }}
+      }}
+    }}
+
+    function wireSpeakerNameInputs() {{
+      document.querySelectorAll(".speaker-name-input").forEach((input) => {{
+        input.addEventListener("input", () => rememberSpeakerNameInput(input));
+      }});
+    }}
+
     function renderJob(job) {{
       const cls = statusClass(job.status);
       const link = job.markdown_url ? `<a class="job-link" href="${{job.markdown_url}}" target="_blank" rel="noreferrer">Markdown</a>` : "";
@@ -1219,6 +1283,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function renderResults(job, options = {{}}) {{
       const key = resultRenderKey(job);
       if (!options.force && key === renderedResultKey) return;
+      const focusState = captureSpeakerFocus();
       renderedResultKey = key;
       if (job.status !== "done") {{
         const text = job.status === "failed"
@@ -1229,6 +1294,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         resultDetails.innerHTML = `
           <div class="result-meta">${{jobBadges(job)}}</div>
           <div class="empty">${{text}}</div>`;
+        restoreSpeakerFocus(focusState);
         return;
       }}
       const files = job.files || [];
@@ -1240,7 +1306,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         ? samples.map((sample) => `<div class="speaker-row">
             <span class="badge">${{escapeHtml(sample.label)}}</span>
             <audio controls preload="metadata" src="${{sample.url}}"></audio>
-            <input class="speaker-name-input" data-speaker="${{sample.speaker}}" value="${{escapeAttribute(sample.name || "")}}" placeholder="Имя спикера ${{sample.speaker}}">
+            <input class="speaker-name-input" data-job="${{escapeAttribute(job.id)}}" data-speaker="${{escapeAttribute(sample.speaker)}}" value="${{escapeAttribute(speakerNameValue(job, sample))}}" placeholder="Имя спикера ${{sample.speaker}}">
           </div>`).join("")
         : '<div class="empty">Voice samples пока не найдены</div>';
       resultDetails.innerHTML = `
@@ -1257,6 +1323,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         applyButton.addEventListener("click", async () => {{
           const names = {{}};
           document.querySelectorAll(".speaker-name-input").forEach((input) => {{
+            rememberSpeakerNameInput(input);
             names[input.dataset.speaker] = input.value;
           }});
           applyButton.disabled = true;
@@ -1269,6 +1336,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || "request failed");
             activeJobId = payload.id;
+            clearSpeakerNameDrafts(job.id);
             renderedResultKey = null;
             await loadJobs();
           }} catch (error) {{
@@ -1278,6 +1346,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           }}
         }});
       }}
+      wireSpeakerNameInputs();
+      restoreSpeakerFocus(focusState);
     }}
 
     function resultRenderKey(job) {{
