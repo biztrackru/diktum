@@ -1,0 +1,31 @@
+[project]
+name = "voice-recognizer"
+version = "0.1.0"
+description = "Local Russian transcription and speaker diarization pipeline for iPhone voice memos."
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+asr = [
+    "gigaam @ git+https://github.com/salute-developers/GigaAM.git",
+]
+diarization = [
+    "numpy>=1.26",
+    "pyannote.audio>=4,<5",
+]
+docs = [
+    "python-docx>=1.1",
+]
+
+[project.scripts]
+voice-recognizer = "voice_recognizer.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

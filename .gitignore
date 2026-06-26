@@ -1,0 +1,25 @@
+.DS_Store
+.venv/
+.env
+.env.*
+!.env.example
+.cache/
+.models/
+outputs/
+tools/bin/
+*.egg-info/
+__pycache__/
+*.py[cod]
+*$py.class
+*.docx
+!docs/**/*.docx
+~$*.docx
+
+# Local audio corpus and generated media
+Inbox/
+inbox/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg

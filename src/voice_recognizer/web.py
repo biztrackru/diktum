@@ -1,0 +1,1795 @@
+from __future__ import annotations
+
+import html
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import quote, unquote, urlparse
+
+from voice_recognizer.audio import iter_media_files, safe_stem
+from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, normalize_asr_engine
+
+
+MAX_LOG_LINES = 500
+JOBS: dict[str, "Job"] = {}
+JOB_QUEUE: list[str] = []
+JOBS_LOCK = threading.Lock()
+WORKER_THREAD: threading.Thread | None = None
+
+
+@dataclass(frozen=True)
+class WebConfig:
+    root: Path
+    inbox: Path
+    output_dir: Path
+    host: str
+    port: int
+
+
+@dataclass
+class Job:
+    id: str
+    source_path: Path
+    source_name: str
+    command: list[str]
+    output_dir: Path
+    markdown_path: Path
+    manifest_path: Path
+    start: float | None
+    duration: float | None
+    device: str
+    asr_engine: str
+    speaker_mode: str
+    num_speakers: int | None
+    min_speakers: int | None
+    max_speakers: int | None
+    speaker_names: str = ""
+    created_at: float = field(default_factory=time.time)
+    status: str = "queued"
+    returncode: int | None = None
+    completed_at: float | None = None
+    log: list[str] = field(default_factory=list)
+
+
+def run_web_server(
+    *,
+    root: Path,
+    inbox: Path,
+    output_dir: Path,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+) -> None:
+    config = WebConfig(
+        root=root.resolve(),
+        inbox=(root / inbox).resolve() if not inbox.is_absolute() else inbox.resolve(),
+        output_dir=(root / output_dir).resolve() if not output_dir.is_absolute() else output_dir.resolve(),
+        host=host,
+        port=port,
+    )
+
+    class Handler(VoiceRecognizerHandler):
+        web_config = config
+
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"Voice Recognizer web UI: http://{host}:{port}", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+class VoiceRecognizerHandler(BaseHTTPRequestHandler):
+    web_config: WebConfig
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+    def do_GET(self) -> None:
+        self._handle_get_or_head(head_only=False)
+
+    def do_HEAD(self) -> None:
+        self._handle_get_or_head(head_only=True)
+
+    def _handle_get_or_head(self, *, head_only: bool) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/favicon.ico":
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.end_headers()
+            return
+        if parsed.path == "/":
+            self._send_html(self._render_index(), head_only=head_only)
+            return
+        if parsed.path == "/api/jobs":
+            self._send_json({"jobs": _job_list(self.web_config.root)}, head_only=head_only)
+            return
+        if parsed.path.startswith("/api/jobs/"):
+            job_id = parsed.path.removeprefix("/api/jobs/").split("/", 1)[0]
+            with JOBS_LOCK:
+                job = JOBS.get(job_id)
+            if job is None:
+                self._send_json({"error": "job not found"}, status=HTTPStatus.NOT_FOUND, head_only=head_only)
+                return
+            self._send_json(_job_payload(job, self.web_config.root), head_only=head_only)
+            return
+        if parsed.path.startswith("/outputs/"):
+            self._serve_output(parsed.path, head_only=head_only)
+            return
+        self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND, head_only=head_only)
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/speaker-names"):
+            job_id = parsed.path.removeprefix("/api/jobs/").removesuffix("/speaker-names").strip("/")
+            try:
+                payload = self._read_json_body()
+                speaker_names = _speaker_names_payload_to_cli(payload.get("speaker_names"))
+                job = _apply_speaker_names(job_id, speaker_names, self.web_config.root)
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(_job_payload(job, self.web_config.root))
+            return
+
+        if parsed.path != "/api/jobs":
+            self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        try:
+            payload = self._read_json_body()
+            source = _resolve_source(self.web_config.inbox, str(payload.get("source", "")))
+            start = _optional_float(payload.get("start"))
+            duration = _optional_float(payload.get("duration"))
+            device = str(payload.get("device") or "auto")
+            asr_engine = normalize_asr_engine(str(payload.get("asr_engine") or DEFAULT_ASR_ENGINE))
+            speaker_mode, num_speakers, min_speakers, max_speakers = _speaker_constraints_from_payload(payload)
+            output_dir = _resolve_output_dir(self.web_config.root, str(payload.get("output_dir") or self.web_config.output_dir))
+            overwrite = bool(payload.get("overwrite"))
+            speaker_names = str(payload.get("speaker_names") or "")
+        except ValueError as error:
+            self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        job = _create_job(
+            source=source,
+            output_dir=output_dir,
+            start=start,
+            duration=duration,
+            device=device,
+            asr_engine=asr_engine,
+            speaker_mode=speaker_mode,
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+            speaker_names=speaker_names,
+            overwrite=overwrite,
+            root=self.web_config.root,
+        )
+        with JOBS_LOCK:
+            JOBS[job.id] = job
+        _enqueue_job(job.id, self.web_config.root)
+        self._send_json(_job_payload(job, self.web_config.root), status=HTTPStatus.CREATED)
+
+    def _render_index(self) -> str:
+        files = iter_media_files(self.web_config.inbox)
+        file_count = len(files)
+        rows = "\n".join(
+            f"""
+            <button class="file-row" type="button" data-file="{html.escape(path.name)}">
+              <span>{html.escape(path.name)}</span>
+              <span>{_file_size_label(path)}</span>
+            </button>
+            """
+            for path in files
+        )
+        options = "\n".join(
+            f'<option value="{html.escape(path.name)}">{html.escape(path.name)}</option>'
+            for path in files
+        )
+        asr_options = "\n".join(
+            _render_asr_engine_option(choice.value, choice.label, choice.available)
+            for choice in ASR_ENGINE_CHOICES
+        )
+        output_dir = _relative_display(self.web_config.root, self.web_config.output_dir)
+        return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Recognizer</title>
+  <style>
+    :root {{
+      --bg: #f4f6f7;
+      --surface: #ffffff;
+      --surface-2: #f8faf9;
+      --surface-3: #eef3f1;
+      --text: #111719;
+      --muted: #647078;
+      --soft: #8b969e;
+      --border: #d9e0e3;
+      --border-strong: #bcc8ce;
+      --accent: #0b7f72;
+      --accent-dark: #08685d;
+      --accent-soft: rgba(11, 127, 114, 0.1);
+      --done: #b66a20;
+      --running: #0b7f72;
+      --danger: #b42318;
+      --radius: 8px;
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+    }}
+    button, input, select, textarea {{
+      font: inherit;
+    }}
+    button {{
+      color: inherit;
+    }}
+    .shell {{
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }}
+    .topbar {{
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }}
+    .brand {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }}
+    .brand-mark {{
+      width: 30px;
+      height: 30px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--accent);
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+    }}
+    h1 {{
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      font-weight: 760;
+      letter-spacing: 0;
+    }}
+    .brand-subtitle {{
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+      font-weight: 560;
+    }}
+    .topbar-status {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }}
+    .status-dot {{
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(11, 127, 114, 0.14);
+    }}
+    .workflow {{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 1px;
+      padding: 0 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }}
+    .workflow-step {{
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }}
+    .step-index {{
+      width: 20px;
+      height: 20px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--surface-3);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 800;
+    }}
+    main {{
+      display: grid;
+      grid-template-columns: minmax(330px, 390px) minmax(360px, 1fr) minmax(380px, 470px);
+      gap: 14px;
+      min-height: calc(100vh - 99px);
+      padding: 14px;
+    }}
+    .sidebar, .workbench, .review {{
+      min-width: 0;
+    }}
+    .sidebar, .workbench, .review {{
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }}
+    .panel {{
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      min-width: 0;
+      overflow: hidden;
+    }}
+    .panel-head {{
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }}
+    .panel-title {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }}
+    h2 {{
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 760;
+      letter-spacing: 0;
+    }}
+    .section-body {{
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+    }}
+    form {{
+      display: grid;
+      gap: 12px;
+    }}
+    label, .field {{
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+      font-weight: 680;
+    }}
+    input, select, textarea {{
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      font-size: 13px;
+      font-weight: 600;
+    }}
+    input:focus, select:focus, textarea:focus {{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(11, 127, 114, 0.12);
+    }}
+    input:disabled {{
+      color: var(--soft);
+      background: var(--surface-2);
+      cursor: not-allowed;
+    }}
+    input, select {{
+      height: 38px;
+    }}
+    textarea {{
+      min-height: 74px;
+      padding: 9px 10px;
+      resize: vertical;
+      line-height: 1.35;
+    }}
+    .grid-2 {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }}
+    .grid-3 {{
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }}
+    .setting-line {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }}
+    .speaker-controls {{
+      display: grid;
+      gap: 8px;
+    }}
+    .segmented {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface-2);
+    }}
+    .segment {{
+      height: 32px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }}
+    .segment.active {{
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(17, 23, 25, 0.08);
+    }}
+    .speaker-segmented {{
+      grid-template-columns: 1.25fr 0.8fr 1fr;
+    }}
+    .actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }}
+    .btn {{
+      min-height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface-3);
+      color: var(--text);
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 740;
+    }}
+    .btn.primary {{
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }}
+    .btn.primary:hover {{
+      background: var(--accent-dark);
+    }}
+    .btn.ghost {{
+      background: #fff;
+    }}
+    .btn.full {{
+      flex: 1 1 160px;
+    }}
+    .btn:disabled {{
+      opacity: 0.55;
+      cursor: wait;
+    }}
+    .check-row {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 620;
+    }}
+    .check-row input {{
+      width: 16px;
+      height: 16px;
+      padding: 0;
+    }}
+    .file-list {{
+      display: grid;
+      gap: 6px;
+      max-height: 240px;
+      overflow: auto;
+    }}
+    .file-row {{
+      width: 100%;
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 10px;
+      text-align: left;
+      cursor: pointer;
+    }}
+    .file-row span:first-child {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 660;
+    }}
+    .file-row span:last-child {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }}
+    .file-row.active {{
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }}
+    .queue-summary {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+    .job-list {{
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      min-height: 180px;
+      max-height: 39vh;
+      overflow: auto;
+    }}
+    .job-row {{
+      width: 100%;
+      display: grid;
+      grid-template-columns: 84px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 46px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+    }}
+    .job-row.active {{
+      border-color: var(--accent);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }}
+    .badge {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: var(--surface-3);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+      white-space: nowrap;
+    }}
+    .badge.queued {{ background: #edf1f2; color: #5c6870; }}
+    .badge.running {{ background: rgba(11, 127, 114, 0.12); color: var(--running); }}
+    .badge.failed {{ background: rgba(180, 35, 24, 0.1); color: var(--danger); }}
+    .badge.done {{ background: rgba(182, 106, 32, 0.13); color: var(--done); }}
+    .job-main {{
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }}
+    .job-name {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 720;
+    }}
+    .job-meta {{
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+    .job-link {{
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 780;
+      text-decoration: none;
+    }}
+    .result-body {{
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+    }}
+    .result-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+    .link-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .link-chip {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      color: var(--accent);
+      background: #fff;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 760;
+    }}
+    .speaker-editor {{
+      display: grid;
+      gap: 10px;
+    }}
+    .speaker-row {{
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 8px 10px;
+      align-items: center;
+    }}
+    .speaker-row audio {{
+      width: 100%;
+      height: 34px;
+    }}
+    .speaker-row input {{
+      grid-column: 1 / -1;
+    }}
+    pre {{
+      margin: 0;
+      height: 100%;
+      min-height: 260px;
+      max-height: 34vh;
+      padding: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #1d2428;
+      background: #fbfbfa;
+      border-radius: 0 0 var(--radius) var(--radius);
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }}
+    .empty {{
+      padding: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }}
+    @media (max-width: 1180px) {{
+      main {{
+        grid-template-columns: minmax(320px, 380px) 1fr;
+      }}
+      .review {{
+        grid-column: 1 / -1;
+      }}
+    }}
+    @media (max-width: 820px) {{
+      .topbar {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+      .workflow {{
+        grid-template-columns: 1fr;
+        padding: 6px 14px;
+      }}
+      .workflow-step {{
+        min-height: 28px;
+      }}
+      main {{
+        grid-template-columns: 1fr;
+        padding: 10px;
+      }}
+      .speaker-row {{
+        grid-template-columns: 1fr;
+      }}
+      .job-row {{
+        grid-template-columns: 78px 1fr;
+      }}
+      .job-link {{
+        grid-column: 2;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">VR</span>
+        <div>
+          <h1>Voice Recognizer</h1>
+          <p class="brand-subtitle">Локальный рабочий стол транскрибации</p>
+        </div>
+      </div>
+      <div class="topbar-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>127.0.0.1:{self.web_config.port}</span>
+      </div>
+    </header>
+    <nav class="workflow" aria-label="Workflow">
+      <span class="workflow-step"><span class="step-index">1</span>Inbox</span>
+      <span class="workflow-step"><span class="step-index">2</span>Настройки</span>
+      <span class="workflow-step"><span class="step-index">3</span>Очередь</span>
+      <span class="workflow-step"><span class="step-index">4</span>Спикеры</span>
+      <span class="workflow-step"><span class="step-index">5</span>Экспорт</span>
+    </nav>
+    <main>
+      <aside class="sidebar">
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <h2>Inbox</h2>
+            </div>
+            <span class="badge">{file_count} файлов</span>
+          </div>
+          <div class="section-body">
+            <label>Источник
+              <select name="source" id="source-select" form="job-form" required>
+                {options}
+              </select>
+            </label>
+            <div class="file-list" id="file-list">
+              {rows or '<div class="empty">Inbox пуст</div>'}
+            </div>
+          </div>
+        </section>
+
+        <form id="job-form">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Настройки запуска</h2>
+              <span class="badge" id="run-mode-label">один файл</span>
+            </div>
+            <div class="section-body">
+              <div class="segmented" role="group" aria-label="Режим обработки">
+                <button class="segment active" id="mode-single" type="button" data-mode="single">Один файл</button>
+                <button class="segment" id="mode-batch" type="button" data-mode="batch">Весь Inbox</button>
+              </div>
+              <div class="grid-2">
+                <label>Старт, сек
+                  <input name="start" inputmode="decimal" placeholder="0">
+                </label>
+                <label>Длительность, сек
+                  <input name="duration" inputmode="decimal" placeholder="полный файл">
+                </label>
+              </div>
+              <div class="grid-2">
+                <label>ASR-движок
+                  <select name="asr_engine">
+                    {asr_options}
+                  </select>
+                </label>
+                <label>Устройство
+                  <select name="device">
+                    <option value="auto">auto</option>
+                    <option value="mps">mps</option>
+                    <option value="cpu">cpu</option>
+                  </select>
+                </label>
+              </div>
+              <div class="speaker-controls">
+                <div class="setting-line">
+                  <span>Определение спикеров</span>
+                  <span class="badge" id="speaker-mode-label">auto по файлу</span>
+                </div>
+                <div class="segmented speaker-segmented" role="group" aria-label="Режим определения спикеров">
+                  <button class="segment active" type="button" data-speaker-mode="auto">Auto по файлу</button>
+                  <button class="segment" type="button" data-speaker-mode="exact">Точно</button>
+                  <button class="segment" type="button" data-speaker-mode="range">Диапазон</button>
+                </div>
+                <div class="grid-3">
+                  <label>Спикеров
+                    <input name="num_speakers" inputmode="numeric">
+                  </label>
+                  <label>Мин.
+                    <input name="min_speakers" inputmode="numeric">
+                  </label>
+                  <label>Макс.
+                    <input name="max_speakers" inputmode="numeric">
+                  </label>
+                </div>
+              </div>
+              <label>Результаты
+                <input name="output_dir" value="{html.escape(output_dir)}">
+              </label>
+              <label>Имена спикеров
+                <textarea name="speaker_names" placeholder="1=Андрей&#10;2=Оля&#10;3=Вопрос из зала"></textarea>
+              </label>
+              <label class="check-row">
+                <input name="overwrite" type="checkbox">
+                <span>Пересчитать существующие артефакты</span>
+              </label>
+              <div class="actions">
+                <button class="btn primary full" id="run-button" type="submit">Запустить выбранный</button>
+                <button class="btn full" id="queue-all-button" type="button">Поставить весь Inbox</button>
+                <button class="btn ghost" id="refresh-button" type="button">Обновить</button>
+              </div>
+            </div>
+          </section>
+        </form>
+      </aside>
+
+      <section class="workbench">
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <h2>Очередь</h2>
+            </div>
+            <div class="queue-summary">
+              <span class="badge" id="job-count">0</span>
+              <span class="badge queued" id="queued-count">0 queued</span>
+              <span class="badge running" id="running-count">0 running</span>
+              <span class="badge done" id="done-count">0 done</span>
+            </div>
+          </div>
+          <div class="job-list" id="jobs"><div class="empty">Нет задач</div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Журнал</h2>
+            <span class="badge" id="active-job">-</span>
+          </div>
+          <pre id="log"></pre>
+        </section>
+      </section>
+
+      <section class="review">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Проверка и экспорт</h2>
+            <span class="badge" id="result-state">-</span>
+          </div>
+          <div class="result-body" id="result-details"><div class="empty">Нет выбранной задачи</div></div>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script>
+    const form = document.querySelector("#job-form");
+    const runButton = document.querySelector("#run-button");
+    const queueAllButton = document.querySelector("#queue-all-button");
+    const sourceSelect = document.querySelector("#source-select");
+    const fileList = document.querySelector("#file-list");
+    const jobsNode = document.querySelector("#jobs");
+    const logNode = document.querySelector("#log");
+    const jobCount = document.querySelector("#job-count");
+    const queuedCount = document.querySelector("#queued-count");
+    const runningCount = document.querySelector("#running-count");
+    const doneCount = document.querySelector("#done-count");
+    const activeJobNode = document.querySelector("#active-job");
+    const resultDetails = document.querySelector("#result-details");
+    const resultState = document.querySelector("#result-state");
+    const runModeLabel = document.querySelector("#run-mode-label");
+    const modeButtons = document.querySelectorAll(".segment[data-mode]");
+    const speakerModeLabel = document.querySelector("#speaker-mode-label");
+    const speakerModeButtons = document.querySelectorAll(".segment[data-speaker-mode]");
+    const speakerInputs = {{
+      exact: document.querySelector('input[name="num_speakers"]'),
+      min: document.querySelector('input[name="min_speakers"]'),
+      max: document.querySelector('input[name="max_speakers"]'),
+    }};
+    let activeJobId = null;
+    let renderedResultKey = null;
+    let runMode = "single";
+    let speakerMode = "auto";
+
+    function syncFileSelection() {{
+      document.querySelectorAll(".file-row").forEach((row) => {{
+        row.classList.toggle("active", row.dataset.file === sourceSelect.value);
+      }});
+    }}
+
+    function setRunMode(mode) {{
+      runMode = mode;
+      modeButtons.forEach((button) => {{
+        button.classList.toggle("active", button.dataset.mode === mode);
+      }});
+      runModeLabel.textContent = mode === "batch" ? "весь Inbox" : "один файл";
+      runButton.textContent = mode === "batch" ? "Поставить весь Inbox" : "Запустить выбранный";
+      queueAllButton.hidden = mode === "batch";
+      if (mode === "batch") setSpeakerMode("auto");
+    }}
+
+    function setSpeakerMode(mode) {{
+      speakerMode = ["auto", "exact", "range"].includes(mode) ? mode : "auto";
+      speakerModeButtons.forEach((button) => {{
+        button.classList.toggle("active", button.dataset.speakerMode === speakerMode);
+      }});
+      const isExact = speakerMode === "exact";
+      const isRange = speakerMode === "range";
+      speakerInputs.exact.disabled = !isExact;
+      speakerInputs.min.disabled = !isRange;
+      speakerInputs.max.disabled = !isRange;
+      if (!isExact) speakerInputs.exact.value = "";
+      if (!isRange) {{
+        speakerInputs.min.value = "";
+        speakerInputs.max.value = "";
+      }}
+      speakerModeLabel.textContent = speakerMode === "exact"
+        ? "точное число"
+        : speakerMode === "range"
+          ? "диапазон"
+          : "auto по файлу";
+    }}
+
+    function applySpeakerModeToPayload(data) {{
+      data.speaker_mode = speakerMode;
+      if (speakerMode === "auto") {{
+        delete data.num_speakers;
+        delete data.min_speakers;
+        delete data.max_speakers;
+        return;
+      }}
+      if (speakerMode === "exact") {{
+        delete data.min_speakers;
+        delete data.max_speakers;
+        return;
+      }}
+      delete data.num_speakers;
+    }}
+
+    fileList.addEventListener("click", (event) => {{
+      const row = event.target.closest(".file-row");
+      if (!row) return;
+      sourceSelect.value = row.dataset.file;
+      setRunMode("single");
+      syncFileSelection();
+    }});
+
+    sourceSelect.addEventListener("change", () => {{
+      setRunMode("single");
+      syncFileSelection();
+    }});
+    modeButtons.forEach((button) => {{
+      button.addEventListener("click", () => setRunMode(button.dataset.mode));
+    }});
+    speakerModeButtons.forEach((button) => {{
+      button.addEventListener("click", () => setSpeakerMode(button.dataset.speakerMode));
+    }});
+    document.querySelector("#refresh-button").addEventListener("click", loadJobs);
+    queueAllButton.addEventListener("click", () => queueAllJobs());
+
+    form.addEventListener("submit", async (event) => {{
+      event.preventDefault();
+      if (runMode === "batch") {{
+        await queueAllJobs();
+        return;
+      }}
+      await createSingleJob();
+    }});
+
+    async function createSingleJob() {{
+      runButton.disabled = true;
+      queueAllButton.disabled = true;
+      try {{
+        const payload = await createJobForSource(sourceSelect.value);
+        activeJobId = payload.id;
+        await loadJobs();
+      }} catch (error) {{
+        logNode.textContent = String(error);
+      }} finally {{
+        runButton.disabled = false;
+        queueAllButton.disabled = false;
+      }}
+    }}
+
+    async function queueAllJobs() {{
+      const sources = Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
+      if (!sources.length) {{
+        logNode.textContent = "Inbox пуст";
+        return;
+      }}
+      runButton.disabled = true;
+      queueAllButton.disabled = true;
+      let firstJobId = null;
+      try {{
+        for (const source of sources) {{
+          const payload = await createJobForSource(source);
+          if (!firstJobId) firstJobId = payload.id;
+        }}
+        if (firstJobId) activeJobId = firstJobId;
+        setRunMode("batch");
+        await loadJobs();
+      }} catch (error) {{
+        logNode.textContent = String(error);
+      }} finally {{
+        runButton.disabled = false;
+        queueAllButton.disabled = false;
+      }}
+    }}
+
+    async function createJobForSource(source) {{
+      const data = Object.fromEntries(new FormData(form).entries());
+      applySpeakerModeToPayload(data);
+      data.source = source;
+      data.overwrite = form.elements.overwrite.checked;
+      const response = await fetch("/api/jobs", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify(data),
+      }});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "request failed");
+      return payload;
+    }}
+
+    async function loadJobs() {{
+      let payload;
+      try {{
+        const response = await fetch("/api/jobs");
+        payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "request failed");
+      }} catch (error) {{
+        setStatusBadge(resultState, "failed", "offline");
+        setStatusBadge(activeJobNode, "failed", "offline");
+        logNode.textContent = String(error);
+        return;
+      }}
+      const jobs = payload.jobs || [];
+      updateQueueSummary(jobs);
+      if (!jobs.length) {{
+        jobsNode.innerHTML = '<div class="empty">Нет задач</div>';
+        resultDetails.innerHTML = '<div class="empty">Нет выбранной задачи</div>';
+        setStatusBadge(resultState, "", "-");
+        logNode.textContent = "";
+        setStatusBadge(activeJobNode, "", "-");
+        renderedResultKey = null;
+        return;
+      }}
+      const previousActiveJobId = activeJobId;
+      if (!activeJobId) activeJobId = jobs[0].id;
+      const active = jobs.find((job) => job.id === activeJobId) || jobs[0];
+      activeJobId = active.id;
+      jobsNode.innerHTML = jobs.map((job) => renderJob(job)).join("");
+      setStatusBadge(activeJobNode, statusClass(active.status), statusLabel(active.status));
+      setStatusBadge(resultState, statusClass(active.status), statusLabel(active.status));
+      logNode.textContent = active.log.join("");
+      logNode.scrollTop = logNode.scrollHeight;
+      renderResults(active, {{ force: active.id !== previousActiveJobId }});
+      document.querySelectorAll(".job-row").forEach((row) => {{
+        row.addEventListener("click", () => {{
+          activeJobId = row.dataset.job;
+          loadJobs();
+        }});
+      }});
+    }}
+
+    function updateQueueSummary(jobs) {{
+      const counts = jobs.reduce((acc, job) => {{
+        acc[job.status] = (acc[job.status] || 0) + 1;
+        return acc;
+      }}, {{}});
+      jobCount.textContent = `${{jobs.length}} всего`;
+      queuedCount.textContent = `${{counts.queued || 0}} queued`;
+      runningCount.textContent = `${{counts.running || 0}} running`;
+      doneCount.textContent = `${{counts.done || 0}} done`;
+    }}
+
+    function renderJob(job) {{
+      const cls = statusClass(job.status);
+      const link = job.markdown_url ? `<a class="job-link" href="${{job.markdown_url}}" target="_blank" rel="noreferrer">Markdown</a>` : "";
+      return `<button class="job-row ${{job.id === activeJobId ? "active" : ""}}" type="button" data-job="${{job.id}}">
+        <span class="badge ${{cls}}">${{statusLabel(job.status)}}</span>
+        <span class="job-main">
+          <span class="job-name" title="${{escapeHtml(job.source_name)}}">${{escapeHtml(job.source_name)}}</span>
+          <span class="job-meta">${{escapeHtml(jobMeta(job))}}</span>
+        </span>
+        ${{link}}
+      </button>`;
+    }}
+
+    function renderResults(job, options = {{}}) {{
+      const key = resultRenderKey(job);
+      if (!options.force && key === renderedResultKey) return;
+      renderedResultKey = key;
+      if (job.status !== "done") {{
+        const text = job.status === "failed"
+          ? "Задача завершилась с ошибкой. Подробности в журнале."
+          : job.status === "running"
+            ? "Задача выполняется."
+            : "Задача ожидает очереди.";
+        resultDetails.innerHTML = `
+          <div class="result-meta">${{jobBadges(job)}}</div>
+          <div class="empty">${{text}}</div>`;
+        return;
+      }}
+      const files = job.files || [];
+      const samples = job.speaker_samples || [];
+      const fileLinks = files.length
+        ? `<div class="link-list">${{files.map((file) => `<a class="link-chip" href="${{file.url}}" target="_blank" rel="noreferrer">${{escapeHtml(file.label)}}</a>`).join("")}}</div>`
+        : '<div class="empty">Файлы результата пока не найдены</div>';
+      const speakerRows = samples.length
+        ? samples.map((sample) => `<div class="speaker-row">
+            <span class="badge">${{escapeHtml(sample.label)}}</span>
+            <audio controls preload="metadata" src="${{sample.url}}"></audio>
+            <input class="speaker-name-input" data-speaker="${{sample.speaker}}" value="${{escapeAttribute(sample.name || "")}}" placeholder="Имя спикера ${{sample.speaker}}">
+          </div>`).join("")
+        : '<div class="empty">Voice samples пока не найдены</div>';
+      resultDetails.innerHTML = `
+        <div class="result-meta">${{jobBadges(job)}}</div>
+        ${{fileLinks}}
+        <div class="speaker-editor">
+          ${{speakerRows}}
+          <div class="actions">
+            <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
+          </div>
+        </div>`;
+      const applyButton = document.querySelector("#apply-speaker-names");
+      if (applyButton) {{
+        applyButton.addEventListener("click", async () => {{
+          const names = {{}};
+          document.querySelectorAll(".speaker-name-input").forEach((input) => {{
+            names[input.dataset.speaker] = input.value;
+          }});
+          applyButton.disabled = true;
+          try {{
+            const response = await fetch(`/api/jobs/${{job.id}}/speaker-names`, {{
+              method: "POST",
+              headers: {{ "Content-Type": "application/json" }},
+              body: JSON.stringify({{ speaker_names: names }}),
+            }});
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "request failed");
+            activeJobId = payload.id;
+            renderedResultKey = null;
+            await loadJobs();
+          }} catch (error) {{
+            logNode.textContent = String(error);
+          }} finally {{
+            applyButton.disabled = false;
+          }}
+        }});
+      }}
+    }}
+
+    function resultRenderKey(job) {{
+      if (job.status !== "done") {{
+        return `${{job.id}}:${{job.status}}:${{job.returncode ?? ""}}`;
+      }}
+      const files = (job.files || [])
+        .map((file) => `${{file.key}}=${{file.url}}:${{file.label}}`)
+        .join("|");
+      const samples = (job.speaker_samples || [])
+        .map((sample) => `${{sample.speaker}}=${{sample.url}}:${{sample.label}}:${{sample.name || ""}}`)
+        .join("|");
+      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{files}}:${{samples}}`;
+    }}
+
+    function jobBadges(job) {{
+      return [
+        `<span class="badge ${{statusClass(job.status)}}">${{statusLabel(job.status)}}</span>`,
+        `<span class="badge">${{escapeHtml(clipLabel(job))}}</span>`,
+        `<span class="badge">${{escapeHtml(speakerLabel(job))}}</span>`,
+        `<span class="badge">${{escapeHtml(job.output_dir || "outputs")}}</span>`,
+      ].join("");
+    }}
+
+    function jobMeta(job) {{
+      return `${{clipLabel(job)}} · ${{speakerLabel(job)}} · ${{job.device || "auto"}}`;
+    }}
+
+    function clipLabel(job) {{
+      if (job.duration !== null && job.duration !== undefined) {{
+        return `${{job.start || 0}}s + ${{job.duration}}s`;
+      }}
+      return "полный файл";
+    }}
+
+    function speakerLabel(job) {{
+      if (job.num_speakers) return `${{job.num_speakers}} спик.`;
+      if (job.min_speakers || job.max_speakers) {{
+        return `${{job.min_speakers || "?"}}-${{job.max_speakers || "?"}} спик.`;
+      }}
+      return job.speaker_mode === "auto" ? "auto по файлу" : "спикеры auto";
+    }}
+
+    function statusClass(status) {{
+      if (status === "done") return "done";
+      if (status === "failed") return "failed";
+      if (status === "running") return "running";
+      return "queued";
+    }}
+
+    function statusLabel(status) {{
+      if (status === "done") return "done";
+      if (status === "failed") return "failed";
+      if (status === "running") return "running";
+      return "queued";
+    }}
+
+    function setStatusBadge(node, cls, text) {{
+      node.className = `badge ${{cls || ""}}`.trim();
+      node.textContent = text;
+    }}
+
+    function escapeHtml(value) {{
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }}
+
+    function escapeAttribute(value) {{
+      return escapeHtml(value).replaceAll("'", "&#039;");
+    }}
+
+    setSpeakerMode("auto");
+    setRunMode("single");
+    syncFileSelection();
+    loadJobs();
+    setInterval(loadJobs, 2000);
+  </script>
+</body>
+</html>"""
+
+    def _serve_output(self, path: str, *, head_only: bool = False) -> None:
+        relative = Path(unquote(path).lstrip("/"))
+        target = (self.web_config.root / relative).resolve()
+        try:
+            target.relative_to((self.web_config.root / "outputs").resolve())
+        except ValueError:
+            self._send_json({"error": "forbidden"}, status=HTTPStatus.FORBIDDEN)
+            return
+        if not target.exists() or not target.is_file():
+            self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+        content_type = _content_type(target)
+        file_size = target.stat().st_size
+        byte_range = _parse_range_header(self.headers.get("Range"), file_size)
+        if byte_range is None:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+            if not head_only:
+                self.wfile.write(target.read_bytes())
+            return
+
+        start, end = byte_range
+        length = end - start + 1
+        self.send_response(HTTPStatus.PARTIAL_CONTENT)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+        self.send_header("Accept-Ranges", "bytes")
+        self.end_headers()
+        if not head_only:
+            with target.open("rb") as file:
+                file.seek(start)
+                self.wfile.write(file.read(length))
+
+    def _read_json_body(self) -> dict[str, object]:
+        length = int(self.headers.get("Content-Length") or "0")
+        body = self.rfile.read(length).decode("utf-8")
+        payload = json.loads(body or "{}")
+        if not isinstance(payload, dict):
+            raise ValueError("invalid payload")
+        return payload
+
+    def _send_html(self, body: str, status: HTTPStatus = HTTPStatus.OK, *, head_only: bool = False) -> None:
+        data = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
+    def _send_json(
+        self,
+        payload: dict[str, object],
+        status: HTTPStatus = HTTPStatus.OK,
+        *,
+        head_only: bool = False,
+    ) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
+
+def _create_job(
+    *,
+    source: Path,
+    output_dir: Path,
+    start: float | None,
+    duration: float | None,
+    device: str,
+    asr_engine: str,
+    speaker_mode: str,
+    num_speakers: int | None,
+    min_speakers: int | None,
+    max_speakers: int | None,
+    speaker_names: str,
+    overwrite: bool,
+    root: Path,
+) -> Job:
+    suffix = _clip_suffix(start, duration)
+    markdown_path = output_dir / f"{safe_stem(source)}{suffix}.transcript.md"
+    manifest_path = output_dir / f"{safe_stem(source)}{suffix}.manifest.json"
+    source_arg = _cli_path(root, source)
+    output_dir_arg = _cli_path(root, output_dir)
+    command = [
+        sys.executable,
+        "-m",
+        "voice_recognizer.cli",
+        "process",
+        source_arg,
+        "--output-dir",
+        output_dir_arg,
+        "--asr-engine",
+        asr_engine,
+        "--device",
+        device,
+    ]
+    if start is not None:
+        command.extend(["--start", str(start)])
+    if duration is not None:
+        command.extend(["--duration", str(duration)])
+    if num_speakers is not None:
+        command.extend(["--num-speakers", str(num_speakers)])
+    if min_speakers is not None:
+        command.extend(["--min-speakers", str(min_speakers)])
+    if max_speakers is not None:
+        command.extend(["--max-speakers", str(max_speakers)])
+    if speaker_names.strip():
+        command.extend(["--speaker-names", speaker_names.strip()])
+    if overwrite:
+        command.append("--overwrite")
+    job_id = f"{int(time.time() * 1000):x}-{len(JOBS) + 1:x}"
+    job = Job(
+        id=job_id,
+        source_path=source,
+        source_name=source.name,
+        command=command,
+        output_dir=output_dir,
+        markdown_path=markdown_path,
+        manifest_path=manifest_path,
+        start=start,
+        duration=duration,
+        device=device,
+        asr_engine=asr_engine,
+        speaker_mode=speaker_mode,
+        num_speakers=num_speakers,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
+        speaker_names=speaker_names,
+    )
+    job.log.append("$ " + " ".join(command) + "\n")
+    return job
+
+
+def _run_job(job_id: str, root: Path) -> None:
+    with JOBS_LOCK:
+        job = JOBS[job_id]
+        job.status = "running"
+
+    env = os.environ.copy()
+    env.update(_read_dotenv(root / ".env"))
+    env.setdefault("COLUMNS", "180")
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+    process = subprocess.Popen(
+        job.command,
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    assert process.stdout is not None
+    for line in process.stdout:
+        _append_job_log(job_id, line)
+    returncode = process.wait()
+    with JOBS_LOCK:
+        job = JOBS[job_id]
+        job.returncode = returncode
+        job.completed_at = time.time()
+        job.status = "done" if returncode == 0 else "failed"
+        if returncode != 0:
+            job.log.append(f"Process exited with code {returncode}\n")
+
+
+def _enqueue_job(job_id: str, root: Path) -> None:
+    global WORKER_THREAD
+    with JOBS_LOCK:
+        JOB_QUEUE.append(job_id)
+        if WORKER_THREAD is not None and WORKER_THREAD.is_alive():
+            return
+        WORKER_THREAD = threading.Thread(target=_job_worker, args=(root,), daemon=True)
+        WORKER_THREAD.start()
+
+
+def _job_worker(root: Path) -> None:
+    while True:
+        with JOBS_LOCK:
+            if not JOB_QUEUE:
+                return
+            job_id = JOB_QUEUE.pop(0)
+            job = JOBS.get(job_id)
+        if job is None:
+            continue
+        _run_job(job_id, root)
+
+
+def _append_job_log(job_id: str, line: str) -> None:
+    with JOBS_LOCK:
+        job = JOBS[job_id]
+        job.log.append(line)
+        if len(job.log) > MAX_LOG_LINES:
+            job.log = job.log[-MAX_LOG_LINES:]
+
+
+def _job_list(root: Path) -> list[dict[str, object]]:
+    with JOBS_LOCK:
+        jobs = sorted(JOBS.values(), key=lambda item: item.created_at, reverse=True)
+        return [_job_payload(job, root) for job in jobs]
+
+
+def _job_payload(job: Job, root: Path) -> dict[str, object]:
+    manifest = _read_manifest(job.manifest_path)
+    files = _manifest_files(manifest, root)
+    samples = _manifest_samples(manifest, root)
+    markdown_url = _output_url(root, job.markdown_path) if job.markdown_path.exists() else None
+    return {
+        "id": job.id,
+        "source_name": job.source_name,
+        "status": job.status,
+        "returncode": job.returncode,
+        "created_at": job.created_at,
+        "completed_at": job.completed_at,
+        "log": job.log,
+        "asr_engine": job.asr_engine,
+        "device": job.device,
+        "speaker_mode": job.speaker_mode,
+        "start": job.start,
+        "duration": job.duration,
+        "num_speakers": job.num_speakers,
+        "min_speakers": job.min_speakers,
+        "max_speakers": job.max_speakers,
+        "output_dir": _relative_display(root, job.output_dir),
+        "markdown_url": markdown_url,
+        "files": files,
+        "speaker_samples": samples,
+        "speaker_names": manifest.get("speaker_names", {}),
+    }
+
+
+def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            raise ValueError("job not found")
+        if job.status == "running":
+            raise ValueError("job is still running")
+        job.status = "running"
+        job.speaker_names = speaker_names
+        job.log.append("Applying speaker names without rerunning ASR/diarization\n")
+
+    command = [
+        sys.executable,
+        "-m",
+        "voice_recognizer.cli",
+        "process",
+        _cli_path(root, job.source_path),
+        "--output-dir",
+        _cli_path(root, job.output_dir),
+        "--asr-engine",
+        job.asr_engine,
+        "--device",
+        job.device,
+        "--speaker-names",
+        speaker_names,
+    ]
+    if job.start is not None:
+        command.extend(["--start", str(job.start)])
+    if job.duration is not None:
+        command.extend(["--duration", str(job.duration)])
+    if job.num_speakers is not None:
+        command.extend(["--num-speakers", str(job.num_speakers)])
+    if job.min_speakers is not None:
+        command.extend(["--min-speakers", str(job.min_speakers)])
+    if job.max_speakers is not None:
+        command.extend(["--max-speakers", str(job.max_speakers)])
+
+    env = os.environ.copy()
+    env.update(_read_dotenv(root / ".env"))
+    env.setdefault("COLUMNS", "180")
+    env.setdefault("NO_COLOR", "1")
+    env.setdefault("TERM", "dumb")
+    process = subprocess.run(
+        command,
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    with JOBS_LOCK:
+        job = JOBS[job_id]
+        job.returncode = process.returncode
+        job.completed_at = time.time()
+        job.status = "done" if process.returncode == 0 else "failed"
+        job.log.extend(process.stdout.splitlines(keepends=True))
+        if len(job.log) > MAX_LOG_LINES:
+            job.log = job.log[-MAX_LOG_LINES:]
+        if process.returncode != 0:
+            job.log.append(f"Apply names exited with code {process.returncode}\n")
+        return job
+
+
+def _resolve_source(inbox: Path, source_name: str) -> Path:
+    files = {path.name: path for path in iter_media_files(inbox)}
+    if source_name not in files:
+        raise ValueError("source not found in Inbox")
+    return files[source_name]
+
+
+def _read_manifest(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _manifest_files(manifest: dict[str, object], root: Path) -> list[dict[str, str]]:
+    labels = {
+        "detailed_markdown": "Общий Markdown",
+        "clean_timestamps_markdown": "Чистый + время",
+        "clean_markdown": "Чистый",
+        "clean_text": "TXT",
+        "timeline_text": "TXT + время",
+    }
+    outputs = manifest.get("outputs", {})
+    if not isinstance(outputs, dict):
+        return []
+    files = []
+    for key, label in labels.items():
+        value = outputs.get(key)
+        if not value:
+            continue
+        path = (root / str(value)).resolve()
+        if path.exists():
+            files.append({"key": key, "label": label, "url": _output_url(root, path) or ""})
+    return files
+
+
+def _manifest_samples(manifest: dict[str, object], root: Path) -> list[dict[str, str]]:
+    samples = manifest.get("speaker_samples", {})
+    names = manifest.get("speaker_names", {})
+    if not isinstance(samples, dict):
+        return []
+    if not isinstance(names, dict):
+        names = {}
+    rows = []
+    for speaker, value in sorted(samples.items(), key=lambda item: int(item[0])):
+        path = (root / str(value)).resolve()
+        if path.exists():
+            rows.append(
+                {
+                    "speaker": str(speaker),
+                    "label": str(names.get(str(speaker)) or f"Спикер {speaker}"),
+                    "name": str(names.get(str(speaker)) or ""),
+                    "url": _output_url(root, path) or "",
+                }
+            )
+    return rows
+
+
+def _output_url(root: Path, path: Path) -> str | None:
+    try:
+        relative = str(path.resolve().relative_to(root.resolve())).replace(os.sep, "/")
+    except ValueError:
+        return None
+    return "/" + quote(relative)
+
+
+def _speaker_names_payload_to_cli(value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    lines = []
+    for key, name in sorted(value.items(), key=lambda item: int(str(item[0]))):
+        clean = str(name).strip()
+        if clean:
+            lines.append(f"{key}={clean}")
+    return "\n".join(lines)
+
+
+def _parse_range_header(value: str | None, file_size: int) -> tuple[int, int] | None:
+    if not value or not value.startswith("bytes=") or file_size <= 0:
+        return None
+    requested = value.removeprefix("bytes=").split(",", 1)[0].strip()
+    if "-" not in requested:
+        return None
+    raw_start, raw_end = requested.split("-", 1)
+    if raw_start == "":
+        suffix = int(raw_end) if raw_end.isdigit() else 0
+        if suffix <= 0:
+            return None
+        return max(0, file_size - suffix), file_size - 1
+    if not raw_start.isdigit():
+        return None
+    start = int(raw_start)
+    end = int(raw_end) if raw_end.isdigit() else file_size - 1
+    if start >= file_size or end < start:
+        return None
+    return start, min(end, file_size - 1)
+
+
+def _content_type(path: Path) -> str:
+    if path.suffix == ".md":
+        return "text/markdown; charset=utf-8"
+    if path.suffix == ".txt":
+        return "text/plain; charset=utf-8"
+    if path.suffix == ".json":
+        return "application/json; charset=utf-8"
+    if path.suffix == ".wav":
+        return "audio/wav"
+    return "application/octet-stream"
+
+
+def _resolve_output_dir(root: Path, value: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = root / path
+    path = path.resolve()
+    outputs_root = (root / "outputs").resolve()
+    try:
+        path.relative_to(outputs_root)
+    except ValueError as error:
+        raise ValueError("output_dir must stay inside outputs/") from error
+    return path
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = float(text)
+    if parsed < 0:
+        raise ValueError("time values must be non-negative")
+    return parsed
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = int(text)
+    if parsed < 0:
+        raise ValueError("numeric values must be non-negative")
+    return parsed
+
+
+def _speaker_constraints_from_payload(payload: dict[str, object]) -> tuple[str, int | None, int | None, int | None]:
+    num_speakers = _optional_int(payload.get("num_speakers"))
+    min_speakers = _optional_int(payload.get("min_speakers"))
+    max_speakers = _optional_int(payload.get("max_speakers"))
+    raw_mode = payload.get("speaker_mode")
+    if raw_mode is None:
+        speaker_mode = "exact" if num_speakers is not None else "range" if min_speakers is not None or max_speakers is not None else "auto"
+    else:
+        speaker_mode = str(raw_mode).strip().lower()
+    if speaker_mode not in {"auto", "exact", "range"}:
+        raise ValueError("speaker_mode must be auto, exact, or range")
+    if speaker_mode == "auto":
+        return "auto", None, None, None
+    if speaker_mode == "exact":
+        if num_speakers is None:
+            raise ValueError("num_speakers is required in exact speaker mode")
+        return "exact", num_speakers, None, None
+    if min_speakers is None and max_speakers is None:
+        raise ValueError("min_speakers or max_speakers is required in range speaker mode")
+    if min_speakers is not None and max_speakers is not None and min_speakers > max_speakers:
+        raise ValueError("min_speakers must be less than or equal to max_speakers")
+    return "range", None, min_speakers, max_speakers
+
+
+def _clip_suffix(start: float | None, duration: float | None) -> str:
+    if start is None and duration is None:
+        return ""
+    return f"_{int(start or 0)}s_{int(duration or 0)}s"
+
+
+def _file_size_label(path: Path) -> str:
+    size = path.stat().st_size
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{size} B"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+def _render_asr_engine_option(value: str, label: str, available: bool) -> str:
+    selected = " selected" if value == DEFAULT_ASR_ENGINE else ""
+    disabled = "" if available else " disabled"
+    suffix = "" if available else " (скоро)"
+    return (
+        f'<option value="{html.escape(value)}"{selected}{disabled}>'
+        f"{html.escape(label + suffix)}</option>"
+    )
+
+
+def _relative_display(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def _cli_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def _read_dotenv(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            values[key] = value
+    return values
