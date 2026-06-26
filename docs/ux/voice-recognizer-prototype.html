@@ -1,0 +1,878 @@
+<!doctype html>
+<!--
+  Voice Recognizer — UX-прототип целевого интерфейса (design reference, не продакшен-код).
+
+  Назначение: показать поведение, описанное в docs/agent-redesign-proposal.md и
+  docs/ux-audit.md, в работающем виде. Один self-contained vanilla-файл под текущий
+  стек (web.py инжектит HTML/CSS/JS строкой). Данные — моковые, бэкенда нет.
+
+  Перенос в app/src/voice_recognizer/web.py: переносится разметка, CSS-переменные и
+  паттерны (этапы пайплайна, диагностируемые ошибки, controlled-инпуты имён,
+  focus-visible, aria-live). Маппинг «что демонстрируется → находка аудита (F1..F14)»
+  — внизу страницы (раздел «Сопоставление с UX-audit»).
+
+  Шрифты: IBM Plex Sans/Mono с CDN ради дизайна прототипа. Для local-first продукта в
+  продакшене шрифты следует self-host'ить (приватность/офлайн) или принять системный
+  fallback — он заложен в стек.
+
+  Демонстрация F2 (polling не стирает ввод имён): инпуты имён — controlled (значение
+  из состояния), плюс каждые 2с идёт симуляция polling'а, которая сохраняет фокус и
+  каретку. Попробуйте печатать имя на вкладке «Спикеры» — ввод не теряется.
+-->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Recognizer — UX prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --canvas:#f4f6f3; --surface:#ffffff; --surface-2:#eef1ec; --surface-3:#e6ebe4;
+      --line:#e0e4dd; --line-strong:#cbd1c8;
+      --ink:#16211f; --muted:#586a66; --soft:#8a958f;
+      --accent:#0c6b60; --accent-ink:#0a554c; --accent-soft:#e2efec; --accent-tint:rgba(12,107,96,.10);
+      --running:#0c6b60; --running-soft:#e2efec;
+      --done:#9a5512; --done-soft:#f6ecdd;
+      --queued:#566a71; --queued-soft:#eaeef0;
+      --danger:#a3271d; --danger-soft:#f7e7e4;
+      --radius:9px;
+      --font:'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color-scheme: light;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; }
+    body {
+      min-height:100vh; color:var(--ink); background:
+        radial-gradient(120% 80% at 100% 0%, #f7f9f6 0%, var(--canvas) 60%) fixed;
+      font-family:var(--font); font-size:13px; line-height:1.45;
+      font-feature-settings:'cv05' 1, 'ss01' 1;
+    }
+    .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.1px; }
+    button,input,select,textarea { font:inherit; color:inherit; }
+
+    /* ---------- focus (F1) ---------- */
+    a:focus-visible, button:focus-visible, input:focus-visible,
+    select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+      outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+    }
+    :focus:not(:focus-visible){ outline:none; }
+
+    .shell { min-height:100vh; display:grid; grid-template-rows:auto auto 1fr auto; }
+
+    /* ---------- topbar ---------- */
+    .topbar {
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+      padding:11px 22px; background:rgba(255,255,255,.86); backdrop-filter:saturate(1.2) blur(6px);
+      border-bottom:1px solid var(--line);
+    }
+    .brand { display:flex; align-items:center; gap:11px; min-width:0; }
+    .brand-mark {
+      width:34px; height:34px; display:inline-grid; place-items:center; border-radius:9px;
+      background:linear-gradient(160deg,#0e7a6d,#0a554c); color:#fff; font-weight:700; font-size:13px;
+      box-shadow:0 1px 0 rgba(255,255,255,.4) inset, 0 6px 16px -8px rgba(10,85,76,.7); letter-spacing:.5px;
+    }
+    .brand h1 { margin:0; font-size:15px; font-weight:600; letter-spacing:-.2px; }
+    .brand p { margin:1px 0 0; font-size:11.5px; color:var(--muted); font-weight:450; }
+    .topbar-right { display:flex; align-items:center; gap:10px; }
+    .pill {
+      display:inline-flex; align-items:center; gap:7px; height:30px; padding:0 11px; border-radius:999px;
+      border:1px solid var(--line); background:var(--surface); font-size:11.5px; font-weight:500; color:var(--muted);
+      white-space:nowrap;
+    }
+    .pill .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); }
+    .pill.privacy .dot { box-shadow:0 0 0 3px var(--accent-tint); }
+    .worker[data-state="running"] { color:var(--accent-ink); border-color:var(--accent-soft); background:var(--accent-soft); }
+    .worker[data-state="running"] .dot { background:var(--running); animation:pulse 1.4s ease-in-out infinite; }
+    .worker[data-state="offline"] { color:var(--danger); }
+    .worker[data-state="offline"] .dot { background:var(--danger); }
+
+    /* ---------- workflow stepper (F12) ---------- */
+    .workflow { display:flex; gap:4px; padding:8px 22px; background:rgba(255,255,255,.6); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    .wf-step { display:inline-flex; align-items:center; gap:8px; padding:4px 12px 4px 6px; border-radius:999px; color:var(--soft); font-size:11.5px; font-weight:500; }
+    .wf-step .idx { width:19px; height:19px; display:inline-grid; place-items:center; border-radius:50%; background:var(--surface-3); color:var(--soft); font-size:10.5px; font-weight:600; }
+    .wf-step.done { color:var(--muted); } .wf-step.done .idx { background:var(--accent-soft); color:var(--accent-ink); }
+    .wf-step.active { color:var(--accent-ink); background:var(--accent-soft); } .wf-step.active .idx { background:var(--accent); color:#fff; }
+
+    /* ---------- layout ---------- */
+    main { display:grid; grid-template-columns:minmax(320px,380px) minmax(360px,1fr) minmax(390px,480px); gap:14px; padding:14px 22px; align-items:start; }
+    .col { display:grid; gap:14px; align-content:start; min-width:0; }
+    .panel { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); min-width:0; box-shadow:0 1px 2px rgba(22,33,31,.03); overflow:hidden; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; border-bottom:1px solid var(--line); }
+    .panel-head h2 { margin:0; font-size:12px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:var(--muted); }
+    .panel-body { padding:13px; display:grid; gap:13px; }
+
+    label,.field { display:grid; gap:6px; font-size:11.5px; font-weight:500; color:var(--muted); }
+    input,select,textarea {
+      width:100%; height:36px; border:1px solid var(--line-strong); border-radius:7px; padding:0 10px;
+      background:#fff; font-size:13px; font-weight:450; transition:border-color .15s, box-shadow .15s; outline:none;
+    }
+    textarea { height:auto; min-height:64px; padding:8px 10px; resize:vertical; }
+    input:focus,select:focus,textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-tint); }
+    input:disabled { color:var(--soft); background:var(--surface-2); cursor:not-allowed; }
+    input.mono { letter-spacing:0; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+
+    /* segmented */
+    .segmented { display:grid; grid-auto-flow:column; gap:3px; padding:3px; border:1px solid var(--line); border-radius:9px; background:var(--surface-2); }
+    .segment { height:32px; border:0; border-radius:6px; background:transparent; cursor:pointer; color:var(--muted); font-size:12px; font-weight:550; transition:background .15s,color .15s,box-shadow .15s; }
+    .segment:hover { color:var(--ink); }
+    .segment.active { color:var(--accent-ink); background:#fff; box-shadow:0 1px 2px rgba(22,33,31,.10); }
+
+    /* buttons */
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; padding:0 13px; border:1px solid var(--line-strong); border-radius:7px; background:var(--surface); cursor:pointer; font-size:12.5px; font-weight:550; color:var(--ink); transition:background .15s,border-color .15s,box-shadow .15s,transform .05s; }
+    .btn:hover { background:var(--surface-2); }
+    .btn:active { transform:translateY(.5px); }
+    .btn.primary { border-color:var(--accent); background:var(--accent); color:#fff; box-shadow:0 6px 16px -10px rgba(10,85,76,.9); }
+    .btn.primary:hover { background:var(--accent-ink); }
+    .btn.ghost { background:transparent; border-color:transparent; color:var(--muted); }
+    .btn.ghost:hover { background:var(--surface-2); color:var(--ink); }
+    .btn.full { width:100%; }
+    .btn.sm { min-height:30px; padding:0 10px; font-size:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+
+    /* badges / chips */
+    .badge { display:inline-flex; align-items:center; gap:6px; height:23px; padding:0 9px; border-radius:999px; background:var(--surface-3); color:var(--muted); font-size:11px; font-weight:550; white-space:nowrap; }
+    .badge.mono { font-size:11px; }
+    .badge .sd { width:7px; height:7px; border-radius:50%; background:currentColor; }
+    .s-queued { background:var(--queued-soft); color:var(--queued); }
+    .s-running { background:var(--running-soft); color:var(--accent-ink); }
+    .s-done    { background:var(--done-soft); color:var(--done); }
+    .s-failed  { background:var(--danger-soft); color:var(--danger); }
+    .s-rename  { background:var(--accent-soft); color:var(--accent-ink); }
+
+    /* inbox */
+    .filelist { display:grid; gap:7px; max-height:300px; overflow:auto; padding-right:2px; }
+    .file { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; width:100%; text-align:left; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; transition:border-color .15s,background .15s; }
+    .file:hover { border-color:var(--line-strong); background:var(--surface-2); }
+    .file.active { border-color:var(--accent); background:var(--accent-soft); }
+    .file .chk { width:16px; height:16px; }
+    .file .fmeta { min-width:0; }
+    .file .fname { font-weight:550; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .file .fsub { color:var(--muted); font-size:11px; display:flex; gap:8px; }
+    .file .ftag { font-size:10px; font-weight:600; padding:1px 7px; border-radius:999px; }
+    .ftag.new { background:var(--accent-soft); color:var(--accent-ink); }
+    .ftag.done { background:var(--done-soft); color:var(--done); }
+
+    /* clip presets */
+    .presets { display:flex; gap:6px; flex-wrap:wrap; }
+    .chip { height:30px; padding:0 11px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; cursor:pointer; font-size:12px; font-weight:500; color:var(--muted); transition:all .15s; }
+    .chip:hover { border-color:var(--accent); color:var(--accent-ink); }
+    .chip.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+    .hint { font-size:11px; color:var(--muted); }
+    .note { font-size:11px; color:var(--muted); background:var(--surface-2); border:1px solid var(--line); border-radius:7px; padding:8px 10px; }
+    .setting-line { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--muted); font-weight:550; }
+    .check { display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--ink); font-weight:450; }
+    .check input { width:16px; height:16px; }
+
+    /* queue */
+    .queue { display:grid; gap:8px; padding:13px; max-height:48vh; overflow:auto; }
+    .job { display:grid; grid-template-columns:96px 1fr auto; gap:11px; align-items:center; width:100%; text-align:left; padding:10px 11px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; transition:border-color .15s,box-shadow .15s; }
+    .job:hover { border-color:var(--line-strong); }
+    .job.active { border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent); }
+    .job .jname { font-weight:600; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .job .jmeta { color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .summary { display:flex; gap:6px; flex-wrap:wrap; }
+
+    /* active stage rail (F3) */
+    .stage-rail { display:grid; gap:9px; padding:13px; border-top:1px solid var(--line); background:var(--surface-2); }
+    .stage-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .stages { display:grid; grid-template-columns:repeat(5,1fr); gap:7px; }
+    .stage { display:grid; gap:6px; justify-items:center; text-align:center; }
+    .stage .bar { width:100%; height:5px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
+    .stage .bar i { display:block; height:100%; width:0; background:var(--accent); border-radius:3px; transition:width .4s; }
+    .stage.done .bar i { width:100%; }
+    .stage.active .bar i { width:60%; background:linear-gradient(90deg,var(--accent),#3aa394); animation:flow 1.6s ease-in-out infinite; }
+    .stage .lbl { font-size:10.5px; color:var(--soft); font-weight:550; }
+    .stage.done .lbl,.stage.active .lbl { color:var(--muted); }
+    .stage.active .lbl { color:var(--accent-ink); }
+    .heartbeat { font-size:11px; color:var(--muted); display:flex; align-items:center; gap:8px; }
+    .heartbeat .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1.4s ease-in-out infinite; }
+
+    /* log */
+    details.log { border-top:1px solid var(--line); }
+    details.log summary { cursor:pointer; list-style:none; padding:9px 13px; font-size:11.5px; font-weight:550; color:var(--muted); display:flex; align-items:center; gap:8px; }
+    details.log summary::-webkit-details-marker { display:none; }
+    details.log summary::before { content:'▸'; transition:transform .15s; }
+    details.log[open] summary::before { transform:rotate(90deg); }
+    pre.log { margin:0; max-height:30vh; overflow:auto; padding:11px 13px; background:#10201d; color:#cfe6e0; border-radius:0; font-family:var(--mono); font-size:11.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+
+    /* error card (F4) */
+    .errcard { border:1px solid var(--danger); background:var(--danger-soft); border-radius:9px; padding:13px; display:grid; gap:9px; }
+    .errcard h3 { margin:0; font-size:13px; color:var(--danger); display:flex; align-items:center; gap:8px; }
+    .errcard p { margin:0; font-size:12px; color:#5f231c; }
+
+    /* result tabs */
+    .tabs { display:flex; gap:2px; padding:3px; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; }
+    .tab { flex:1; height:32px; border:0; border-radius:6px; background:transparent; cursor:pointer; font-size:12px; font-weight:550; color:var(--muted); transition:all .15s; }
+    .tab:hover { color:var(--ink); }
+    .tab.active { background:#fff; color:var(--accent-ink); box-shadow:0 1px 2px rgba(22,33,31,.10); }
+    .meta-row { display:flex; gap:6px; flex-wrap:wrap; }
+    dl.kv { margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font-size:12px; }
+    dl.kv dt { color:var(--muted); } dl.kv dd { margin:0; font-weight:500; }
+
+    /* transcript preview (F-text) */
+    .transcript { max-width:68ch; display:grid; gap:9px; font-size:13px; line-height:1.6; }
+    .line { display:grid; grid-template-columns:auto 1fr; gap:10px; }
+    .line .tc { font-family:var(--mono); font-size:11px; color:var(--soft); padding-top:2px; }
+    .line .who { font-weight:600; }
+    .spk1 { color:#0c6b60; } .spk2 { color:#9a5512; } .spk3 { color:#5b4bd1; }
+    .transcript.no-tc .tc { display:none; }
+    .transcript.no-tc .line { grid-template-columns:1fr; }
+
+    /* speakers (F2) */
+    .spk-row { display:grid; grid-template-columns:1fr; gap:8px; padding:11px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
+    .spk-head { display:flex; align-items:center; gap:9px; }
+    .spk-color { width:11px; height:11px; border-radius:3px; }
+    .spk-stat { color:var(--muted); font-size:11px; margin-left:auto; }
+    .player { display:flex; align-items:center; gap:9px; padding:6px 9px; border:1px solid var(--line); border-radius:7px; background:var(--surface-2); }
+    .player .play { width:26px; height:26px; border-radius:50%; border:0; background:var(--accent); color:#fff; cursor:pointer; display:grid; place-items:center; }
+    .player .wave { flex:1; height:18px; display:flex; align-items:center; gap:2px; }
+    .player .wave i { flex:1; background:var(--line-strong); border-radius:2px; }
+    .player .time { font-family:var(--mono); font-size:11px; color:var(--muted); }
+
+    /* files grouped (F8) */
+    .export-group { display:grid; gap:7px; }
+    .export-group h4 { margin:6px 0 0; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; color:var(--soft); }
+    .export { display:flex; align-items:center; gap:10px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; text-decoration:none; color:var(--ink); background:#fff; transition:border-color .15s,background .15s; }
+    .export:hover { border-color:var(--accent); background:var(--accent-soft); }
+    .export .ic { width:30px; height:30px; border-radius:7px; background:var(--surface-3); display:grid; place-items:center; color:var(--accent-ink); }
+    .export .et { font-weight:550; font-size:12.5px; } .export .es { color:var(--muted); font-size:11px; }
+    .export .ext { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--soft); }
+
+    .empty { padding:18px; color:var(--muted); font-size:12.5px; text-align:center; }
+
+    /* footer mapping */
+    footer { padding:16px 22px 40px; }
+    .mapping { border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); overflow:hidden; }
+    .mapping summary { cursor:pointer; padding:13px 16px; font-weight:600; font-size:12.5px; color:var(--ink); }
+    .mapping table { width:100%; border-collapse:collapse; font-size:12px; }
+    .mapping th,.mapping td { text-align:left; padding:8px 16px; border-top:1px solid var(--line); vertical-align:top; }
+    .mapping th { color:var(--muted); font-weight:600; background:var(--surface-2); }
+    .mapping td.id { font-family:var(--mono); color:var(--accent-ink); font-weight:600; white-space:nowrap; }
+
+    @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+    @keyframes flow { 0%{ transform:translateX(-30%);} 100%{ transform:translateX(80%);} }
+    @media (prefers-reduced-motion: reduce) { * { animation:none !important; } }
+
+    @media (max-width:1200px) {
+      main { grid-template-columns:minmax(300px,360px) 1fr; }
+      .col.review { grid-column:1 / -1; }
+    }
+    @media (max-width:860px) {
+      main { grid-template-columns:1fr; padding:12px; }
+      .topbar { flex-direction:column; align-items:flex-start; gap:10px; }
+      .stages { grid-template-columns:repeat(5,1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">VR</span>
+        <div>
+          <h1>Voice Recognizer</h1>
+          <p>Локальный рабочий стол транскрибации</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="pill privacy" title="Обработка идёт на этом компьютере">
+          <span class="dot" aria-hidden="true"></span>
+          Локально · <span class="mono">127.0.0.1:8765</span> · файлы не уходят в облако
+        </span>
+        <span class="pill worker" id="worker" data-state="running" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span><span id="worker-text">воркер: обработка</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- WORKFLOW STEPPER (F12) -->
+    <nav class="workflow" id="workflow" aria-label="Этапы работы"></nav>
+
+    <!-- MAIN -->
+    <main>
+      <!-- LEFT: Inbox + run settings -->
+      <section class="col">
+        <div class="panel">
+          <div class="panel-head"><h2>Inbox</h2><span class="badge mono" id="inbox-count">—</span></div>
+          <div class="panel-body">
+            <div class="row">
+              <button class="btn sm full" id="upload-btn">＋ Добавить аудио в Inbox</button>
+            </div>
+            <div class="filelist" id="filelist" role="listbox" aria-label="Файлы Inbox"></div>
+            <p class="hint" id="batch-hint" hidden>Режим «Пакет»: отметьте файлы для последовательной очереди.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Запуск</h2><span class="badge" id="mode-label">один файл</span></div>
+          <div class="panel-body">
+            <div class="segmented" role="group" aria-label="Режим обработки">
+              <button class="segment active" data-mode="single" type="button">Один файл</button>
+              <button class="segment" data-mode="clip" type="button">Тест-фрагмент</button>
+              <button class="segment" data-mode="batch" type="button">Пакет</button>
+            </div>
+
+            <!-- clip controls (F6) -->
+            <div id="clip-controls" hidden>
+              <div class="field"><span>Длительность фрагмента</span>
+                <div class="presets" id="clip-presets">
+                  <button class="chip" data-clip="30" type="button">0:30</button>
+                  <button class="chip active" data-clip="120" type="button">2:00</button>
+                  <button class="chip" data-clip="300" type="button">5:00</button>
+                </div>
+              </div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Старт <span class="hint">мм:сс</span>
+                  <input class="mono" id="clip-start" value="0:00" inputmode="numeric">
+                </label>
+                <label>Длительность <span class="hint">мм:сс</span>
+                  <input class="mono" id="clip-dur" value="2:00" inputmode="numeric">
+                </label>
+              </div>
+              <p class="hint" id="clip-readout" style="margin-top:8px"></p>
+            </div>
+
+            <div class="grid-2">
+              <label>ASR-движок
+                <select id="asr">
+                  <option value="gigastt">GigaSTT · GigaAM v3 (рус)</option>
+                  <option value="whisper">Whisper large-v3 (локально)</option>
+                  <option value="whisper-mlx">Whisper MLX · Apple Silicon</option>
+                </select>
+              </label>
+              <label>Устройство
+                <select id="device">
+                  <option value="auto">auto</option><option value="mps">mps</option><option value="cpu">cpu</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="field">
+              <div class="setting-line"><span>Определение спикеров</span><span class="badge" id="spk-mode-label">auto по файлу</span></div>
+              <div class="segmented" role="group" aria-label="Режим определения спикеров">
+                <button class="segment active" data-spk="auto" type="button">Auto</button>
+                <button class="segment" data-spk="exact" type="button">Точно</button>
+                <button class="segment" data-spk="range" type="button">Диапазон</button>
+              </div>
+              <div class="grid-3" style="margin-top:8px">
+                <label>Спикеров<input class="mono" id="spk-exact" inputmode="numeric" disabled></label>
+                <label>Мин.<input class="mono" id="spk-min" inputmode="numeric" disabled></label>
+                <label>Макс.<input class="mono" id="spk-max" inputmode="numeric" disabled></label>
+              </div>
+            </div>
+
+            <details>
+              <summary class="hint" style="cursor:pointer">Расширенные настройки</summary>
+              <div style="display:grid; gap:10px; margin-top:10px">
+                <label>Папка результатов
+                  <input class="mono" id="outdir" value="outputs/Интервью-с-Ольгой">
+                </label>
+                <label class="check"><input type="checkbox" id="overwrite"><span>Пересчитать существующие артефакты</span></label>
+              </div>
+            </details>
+
+            <div class="row">
+              <button class="btn primary full" id="run-btn">Запустить выбранный</button>
+            </div>
+            <div class="note" id="run-summary"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CENTER: queue + active stages + log -->
+      <section class="col">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="segmented" id="center-toggle" role="group" aria-label="Вид центральной колонки">
+              <button class="segment active" data-view="queue" type="button">Очередь</button>
+              <button class="segment" data-view="results" type="button">Готовые</button>
+            </div>
+            <div class="summary" id="queue-summary" role="status" aria-live="polite"></div>
+          </div>
+          <div class="queue" id="queue"></div>
+          <div id="active-area"></div>
+        </div>
+      </section>
+
+      <!-- RIGHT: result -->
+      <section class="col review">
+        <div class="panel">
+          <div class="panel-head"><h2>Результат</h2><span class="badge" id="result-state" role="status" aria-live="polite">—</span></div>
+          <div class="panel-body" id="result"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- FOOTER: audit mapping -->
+    <footer>
+      <details class="mapping">
+        <summary>Сопоставление с UX-audit (что демонстрирует прототип)</summary>
+        <table>
+          <thead><tr><th>Где в прототипе</th><th>Находка</th><th>Поведение</th></tr></thead>
+          <tbody id="mapping-body"></tbody>
+        </table>
+      </details>
+    </footer>
+  </div>
+
+  <script>
+  // ----------------------------- mock data -----------------------------
+  const FILES = [
+    { id:'interview', name:'Интервью с Ольгой 2026-06-20.m4a', dur:4934, fmt:'m4a', size:'78 MB', state:'done' },
+    { id:'planerka',  name:'Планёрка отдела.m4a',              dur:2851, fmt:'m4a', size:'44 MB', state:'new' },
+    { id:'call',      name:'Звонок с подрядчиком.mp3',         dur:1085, fmt:'mp3', size:'17 MB', state:'new' },
+    { id:'dict014',   name:'Диктофон 014.wav',                 dur:7908, fmt:'wav', size:'1.3 GB', state:'new' },
+  ];
+  const STAGES = ['Аудио','ASR','Диаризация','Склейка','Экспорт'];
+
+  const JOBS = [
+    { id:'job-ola', src:'Интервью с Ольгой 2026-06-20.m4a', status:'done', mode:'полный файл',
+      asr:'GigaSTT', device:'mps', spk:'3 спикера', elapsed:2472, out:'outputs/Интервью-с-Ольгой' },
+    { id:'job-plan', src:'Планёрка отдела.m4a', status:'running', mode:'полный файл',
+      asr:'GigaSTT', device:'mps', spk:'auto по файлу', elapsed:734, stage:2, out:'outputs/Планёрка-отдела',
+      beats:['diarization: pyannote/speaker-diarization-3.1 на mps','обработано 11:54 / 47:31','встроенных сегментов: 218','VAD: speech 78% · silence 22%'] },
+    { id:'job-call', status:'failed', src:'Звонок с подрядчиком.mp3', mode:'полный файл',
+      asr:'GigaSTT', device:'mps', spk:'auto по файлу', elapsed:14, out:'outputs/Звонок-с-подрядчиком',
+      error:{ code:1, key:'pyannote',
+        title:'Нет доступа к модели pyannote',
+        detail:'Токен найден, но аккаунт не принял условия модели pyannote/speaker-diarization-3.1. ASR-часть не запускалась.',
+        actions:[ {label:'Открыть инструкцию по токену', kind:'primary'}, {label:'Повторить на CPU'}, {label:'Принять условия модели'} ] } },
+    { id:'job-dict', status:'queued', src:'Диктофон 014.wav', mode:'полный файл',
+      asr:'GigaSTT', device:'auto', spk:'auto по файлу', elapsed:0, queuePos:1, out:'outputs/Диктофон-014' },
+  ];
+
+  const SPEAKERS = {
+    'job-ola':[
+      { id:1, name:'Ольга', cls:'spk1', color:'#0c6b60', segs:142, share:'58%', first:'0:03', sample:12 },
+      { id:2, name:'Андрей', cls:'spk2', color:'#9a5512', segs:96, share:'37%', first:'0:21', sample:9 },
+      { id:3, name:'Вопрос из зала', cls:'spk3', color:'#5b4bd1', segs:11, share:'5%', first:'48:10', sample:6 },
+    ]
+  };
+  const TRANSCRIPT = {
+    'job-ola':[
+      { tc:'0:03', who:'Ольга', cls:'spk1', text:'Давайте начнём. Расскажите, как вы пришли к идее локальной обработки записей.' },
+      { tc:'0:21', who:'Андрей', cls:'spk2', text:'Если коротко — приватность. Записи интервью не должны уходить в чужое облако, поэтому всё считается на этом ноутбуке.' },
+      { tc:'1:04', who:'Ольга', cls:'spk1', text:'А длинные файлы? Часовые планёрки не упираются в лимит?' },
+      { tc:'1:12', who:'Андрей', cls:'spk2', text:'Нет, длинная запись режется на части и собирается обратно, поэтому два часа проходят без ошибки лимита.' },
+      { tc:'48:10', who:'Вопрос из зала', cls:'spk3', text:'А имена спикеров можно поправить уже после распознавания?' },
+    ]
+  };
+  const EXPORTS = {
+    'job-ola':[
+      { group:'Для чтения', items:[
+        { t:'Чистый Markdown', s:'без таймкодов, готовый текст', ext:'.md' },
+        { t:'TXT', s:'простой текст для AI-агентов', ext:'.txt' } ]},
+      { group:'Для редактуры', items:[
+        { t:'Markdown с таймкодами', s:'правки с привязкой ко времени', ext:'.md' },
+        { t:'Подробный Markdown', s:'спикеры, сегменты, диагностика', ext:'.md' } ]},
+      { group:'Для документов', items:[
+        { t:'DOCX', s:'для Word и согласований', ext:'.docx' } ]},
+      { group:'Диагностика', items:[
+        { t:'manifest', s:'состояние этапов pipeline', ext:'.json' },
+        { t:'raw ASR/diarization', s:'сырые сегменты и слова', ext:'.json' } ]},
+    ]
+  };
+
+  // disk-backed results library (survives restart; some entries have no live job) — F15/F16
+  const RESULTS = [
+    { id:'job-ola',      src:'Интервью с Ольгой 2026-06-20.m4a',     kind:'full', status:'done', completed:'сегодня 15:13', dur:4934, spk:'3 спикера', out:'outputs/Интервью-с-Ольгой' },
+    { id:'res-budget',   src:'Совещание по бюджету 2026-06-19.m4a',  kind:'full', status:'done', completed:'вчера 21:14',   dur:3380, spk:'4 спикера', out:'outputs/Совещание-по-бюджету' },
+    { id:'res-1on1',     src:'1:1 с Сергеем.m4a',                    kind:'full', status:'partial', completed:'18 июн',     dur:1622, spk:'2 спикера', out:'outputs/1-1-с-Сергеем' },
+    { id:'res-ola-clip', src:'Интервью с Ольгой 2026-06-20.m4a',     kind:'clip', status:'done', completed:'20 июн',        dur:120,  spk:'2 спикера', out:'outputs/Интервью-с-Ольгой/тест' },
+  ];
+  SPEAKERS['res-budget']=[
+    { id:1, name:'', cls:'spk1', color:'#0c6b60', segs:88, share:'34%', first:'0:05', sample:10 },
+    { id:2, name:'', cls:'spk2', color:'#9a5512', segs:74, share:'29%', first:'0:40', sample:8 },
+    { id:3, name:'', cls:'spk3', color:'#5b4bd1', segs:61, share:'24%', first:'3:12', sample:7 },
+    { id:4, name:'', cls:'spk1', color:'#1d7fb8', segs:33, share:'13%', first:'9:48', sample:6 },
+  ];
+  TRANSCRIPT['res-budget']=[
+    { tc:'0:05', who:'Спикер 1', cls:'spk1', text:'Коллеги, бюджет на третий квартал. Начнём с маркетинга.' },
+    { tc:'0:40', who:'Спикер 2', cls:'spk2', text:'По маркетингу превышение на двенадцать процентов, основное — подрядчики.' },
+    { tc:'3:12', who:'Спикер 3', cls:'spk3', text:'Предлагаю заморозить новые активности до пересмотра в августе.' },
+  ];
+  EXPORTS['res-budget']=EXPORTS['job-ola'];
+
+  const MAPPING = [
+    ['Верхняя панель','F4 / F10','Privacy-индикатор + статус воркера в role=status, aria-live'],
+    ['Полоса этапов вверху','F12','Стэпер отражает активный шаг, не декоративен'],
+    ['Inbox · строки файлов','F7','Длительность, формат, дата-состояние «новый/обработан», не только размер'],
+    ['Запуск · «Тест-фрагмент»','F6','Отдельный режим с пресетами и вводом мм:сс'],
+    ['Запуск · «Пакет»','F11','Чекбоксы подмножества Inbox + сводка пакета'],
+    ['Очередь · бейджи','F5','Локализованные статусы: Ожидает/Выполняется/Готово/Ошибка'],
+    ['Активная задача · этапы','F3','Аудио→ASR→Диаризация→Склейка→Экспорт + elapsed + heartbeat'],
+    ['Карточка ошибки','F4','Человеческий диагноз + действия (CPU/инструкция), role=alert'],
+    ['Журнал','F9','Свёрнут по умолчанию; не перетягивает фокус'],
+    ['Результат · вкладки','proposal §2','Обзор / Текст / Спикеры / Файлы'],
+    ['Текст · ширина','F-text','max-width ~68ch, переключатель таймкодов'],
+    ['Спикеры · поля имён','F2','Controlled-инпуты: polling каждые 2с не стирает ввод'],
+    ['Файлы · группы','F8','Для чтения / редактуры / документов / диагностики'],
+    ['Центр · «Готовые»','F15','Библиотека результатов из outputs/: переживает рестарт, есть запись без живой задачи'],
+    ['Inbox «готово →» / открытие из библиотеки','F16','Бейдж «обработан» с переходом к результату; результат открывается без живого Job'],
+    ['Везде','F1 / F14','focus-visible на всех контролах; плавные переходы, prefers-reduced-motion'],
+  ];
+
+  // ----------------------------- state -----------------------------
+  const state = {
+    runMode:'single', speakerMode:'auto', clipDur:120,
+    selectedSource:'interview', selectedJob:'job-ola', centerView:'queue', resultTab:'overview', showTc:true,
+    batch:new Set(FILES.map(f=>f.id)),
+    names:{ 'job-ola':{ 1:'Ольга', 2:'Андрей', 3:'Вопрос из зала' } },
+    rename:null,
+  };
+
+  // ----------------------------- helpers -----------------------------
+  const $ = s => document.querySelector(s);
+  function fmt(sec){ sec=Math.max(0,Math.round(sec)); const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;
+    return h ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`; }
+  function parseTc(v){ const p=String(v).split(':').map(n=>parseInt(n,10)||0); return p.length===3?p[0]*3600+p[1]*60+p[2]:p.length===2?p[0]*60+p[1]:p[0]; }
+  const STATUS_RU = { queued:'Ожидает', running:'Выполняется', done:'Готово', failed:'Ошибка', rename:'Применяю имена' };
+  const STATUS_CLS = { queued:'s-queued', running:'s-running', done:'s-done', failed:'s-failed', rename:'s-rename' };
+  function jobById(id){ return JOBS.find(j=>j.id===id); }
+  function resultById(id){ return RESULTS.find(r=>r.id===id); }
+  function entryById(id){ return jobById(id) || resultById(id); }   // job (transient) or result (disk-backed)
+  function resultsForFile(name){ return RESULTS.filter(r=>r.src===name && r.kind==='full'); }
+
+  /* preserve focus + caret across re-render (the F2 fix pattern) */
+  function withPreservedFocus(fn){
+    const a=document.activeElement; const key=a&&a.dataset?a.dataset.spk:null;
+    const ss=a&&a.selectionStart, se=a&&a.selectionEnd;
+    fn();
+    if(key!=null){ const next=document.querySelector(`[data-spk-input="${key}"]`);
+      if(next){ next.focus(); try{ next.setSelectionRange(ss,se); }catch(e){} } }
+  }
+
+  // ----------------------------- render: workflow -----------------------------
+  function renderWorkflow(){
+    const steps=['Inbox','Настройки','Очередь','Спикеры','Экспорт'];
+    const job=entryById(state.selectedJob);
+    let active=2;
+    if(job){ if(job.status==='done') active=4; else if(job.status==='running') active=2; else if(job.status==='queued') active=2; else if(job.status==='failed') active=2; }
+    $('#workflow').innerHTML=steps.map((s,i)=>{
+      const cls=i<active?'done':i===active?'active':'';
+      return `<span class="wf-step ${cls}" ${i===active?'aria-current="step"':''}><span class="idx">${i<active?'✓':i+1}</span>${s}</span>`;
+    }).join('');
+  }
+
+  // ----------------------------- render: inbox -----------------------------
+  function renderInbox(){
+    $('#inbox-count').textContent=`${FILES.length} файлов`;
+    const batch=state.runMode==='batch';
+    $('#batch-hint').hidden=!batch;
+    $('#filelist').innerHTML=FILES.map(f=>{
+      const active=!batch&&state.selectedSource===f.id;
+      const checked=state.batch.has(f.id);
+      const res=resultsForFile(f.name);
+      const tag=res.length
+        ? `<button class="ftag done" data-open-result="${res[0].id}" style="border:0;cursor:pointer" title="Открыть результат">обработан · готово →</button>`
+        : '<span class="ftag new">новый</span>';
+      const chk=batch?`<input class="chk" type="checkbox" data-file-chk="${f.id}" ${checked?'checked':''} aria-label="Включить ${f.name}">`:'<span style="width:16px"></span>';
+      return `<div class="file ${active?'active':''}" data-file="${f.id}" role="option" aria-selected="${active}" tabindex="0">
+        ${chk}
+        <span class="fmeta">
+          <span class="fname" title="${f.name}">${f.name}</span>
+          <span class="fsub"><span class="mono">${fmt(f.dur)}</span> · ${f.fmt.toUpperCase()} · <span class="mono">${f.size}</span></span>
+        </span>
+        ${tag}
+      </div>`;
+    }).join('');
+  }
+
+  // ----------------------------- render: run settings -----------------------------
+  function renderRunSettings(){
+    $('#mode-label').textContent = state.runMode==='batch'?'пакет':state.runMode==='clip'?'тест-фрагмент':'один файл';
+    document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===state.runMode));
+    $('#clip-controls').hidden = state.runMode!=='clip';
+    $('#run-btn').textContent = state.runMode==='batch'?'Поставить пакет в очередь':'Запустить выбранный';
+    if(state.runMode==='clip'){
+      const st=parseTc($('#clip-start').value), du=parseTc($('#clip-dur').value);
+      $('#clip-readout').textContent=`Фрагмент ${fmt(st)}–${fmt(st+du)} · быстрая проверка качества без полного прогона.`;
+      document.querySelectorAll('[data-clip]').forEach(c=>c.classList.toggle('active',+c.dataset.clip===state.clipDur));
+    }
+    // run summary
+    const f=FILES.find(x=>x.id===state.selectedSource);
+    let scope = state.runMode==='batch' ? `${state.batch.size} файлов · последовательно`
+      : state.runMode==='clip' ? `${f?f.name:'—'} · фрагмент ${$('#clip-dur').value}`
+      : `${f?f.name:'—'} · полный файл`;
+    $('#run-summary').innerHTML=`<b>${scope}</b><br>GigaSTT · ${$('#device').value} · спикеры: ${state.speakerMode==='auto'?'auto по файлу':state.speakerMode==='exact'?'точно':'диапазон'}`;
+  }
+
+  function setSpeakerMode(m){
+    state.speakerMode=m;
+    document.querySelectorAll('[data-spk]').forEach(b=>b.classList.toggle('active',b.dataset.spk===m));
+    $('#spk-exact').disabled=m!=='exact'; $('#spk-min').disabled=m!=='range'; $('#spk-max').disabled=m!=='range';
+    if(m!=='exact')$('#spk-exact').value=''; if(m!=='range'){$('#spk-min').value='';$('#spk-max').value='';}
+    $('#spk-mode-label').textContent=m==='exact'?'точное число':m==='range'?'диапазон':'auto по файлу';
+    renderRunSettings();
+  }
+
+  // ----------------------------- render: queue -----------------------------
+  function renderQueue(){
+    const counts=JOBS.reduce((a,j)=>{a[j.status]=(a[j.status]||0)+1;return a;},{});
+    $('#queue-summary').innerHTML=[
+      `<span class="badge mono">${JOBS.length} всего</span>`,
+      counts.running?`<span class="badge s-running">${counts.running} выполняется</span>`:'',
+      counts.queued?`<span class="badge s-queued">${counts.queued} ожидает</span>`:'',
+      counts.done?`<span class="badge s-done">${counts.done} готово</span>`:'',
+      counts.failed?`<span class="badge s-failed">${counts.failed} ошибка</span>`:'',
+    ].join('');
+    $('#queue').innerHTML=JOBS.map(j=>{
+      const meta = j.status==='running' ? `${STAGES[j.stage]} · ${fmt(j.elapsed)} · ${j.device}`
+        : j.status==='queued' ? `в очереди №${j.queuePos} · ${j.asr}`
+        : j.status==='failed' ? `ошибка · ${j.asr} · ${j.device}`
+        : `${j.mode} · ${j.spk} · ${fmt(j.elapsed)}`;
+      return `<button class="job ${j.id===state.selectedJob?'active':''}" data-job="${j.id}" type="button">
+        <span class="badge ${STATUS_CLS[j.status]}"><span class="sd"></span>${STATUS_RU[j.status]}</span>
+        <span style="min-width:0">
+          <span class="jname" title="${j.src}">${j.src}</span>
+          <span class="jmeta">${meta}</span>
+        </span>
+        ${j.status==='done'?'<span class="badge mono">MD</span>':''}
+      </button>`;
+    }).join('');
+    renderActiveArea();
+  }
+
+  // center column: queue (transient) vs results library (disk-backed) — F15/F16
+  function renderCenter(){
+    document.querySelectorAll('#center-toggle [data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===state.centerView));
+    if(state.centerView==='results') renderResults(); else renderQueue();
+  }
+
+  function renderResults(){
+    $('#active-area').innerHTML='';
+    const done=RESULTS.filter(r=>r.status==='done').length, part=RESULTS.filter(r=>r.status==='partial').length;
+    $('#queue-summary').innerHTML=[
+      `<span class="badge mono">${RESULTS.length} в outputs/</span>`,
+      done?`<span class="badge s-done">${done} готово</span>`:'',
+      part?`<span class="badge s-failed">${part} частично</span>`:'',
+    ].join('');
+    $('#queue').innerHTML=`<p class="hint" style="margin:0 0 2px">Найдено на диске в <span class="mono">outputs/</span> — переживает рестарт сервера. Клик открывает результат без повторной обработки.</p>`+
+      RESULTS.map(r=>`<button class="job ${r.id===state.selectedJob?'active':''}" data-result="${r.id}" type="button">
+        <span class="badge ${STATUS_CLS[r.status]}"><span class="sd"></span>${STATUS_RU[r.status]}</span>
+        <span style="min-width:0">
+          <span class="jname" title="${r.src}">${r.src}${r.kind==='clip'?' · фрагмент':''}</span>
+          <span class="jmeta">${r.completed} · ${r.spk} · <span class="mono">${fmt(r.dur)}</span></span>
+        </span>
+        <span class="badge mono">открыть →</span>
+      </button>`).join('');
+  }
+
+  // active stages + log for the selected running job (F3)
+  function renderActiveArea(){
+    const j=entryById(state.selectedJob);
+    const area=$('#active-area');
+    if(!j || j.status!=='running' || !j.beats){ area.innerHTML=''; return; }
+    const stages=STAGES.map((s,i)=>{
+      const cls=i<j.stage?'done':i===j.stage?'active':'';
+      return `<div class="stage ${cls}"><div class="bar"><i></i></div><span class="lbl">${s}</span></div>`;
+    }).join('');
+    const beat=j.beats[(Math.floor(j.elapsed/2))%j.beats.length];
+    area.innerHTML=`
+      <div class="stage-rail">
+        <div class="stage-top">
+          <span class="badge s-running"><span class="sd"></span>${STAGES[j.stage]}</span>
+          <span class="hint mono">elapsed ${fmt(j.elapsed)} · старт 14:32</span>
+        </div>
+        <div class="stages">${stages}</div>
+        <div class="heartbeat"><span class="dot"></span><span class="mono">${beat}</span></div>
+        <p class="hint">Не закрывайте окно сервера — задача продолжается в фоне. Прогресс по этапам, точный процент появится с чанкингом.</p>
+      </div>
+      <details class="log">
+        <summary>Полный журнал</summary>
+        <pre class="log">[14:32:01] ffmpeg: decode → wav mono 16kHz … ok
+[14:32:09] asr(gigastt): chunk 1/6 … 2/6 … 3/6
+[14:35:44] diarization: pyannote/speaker-diarization-3.1 device=mps
+[14:39:${String(10+j.elapsed%50).padStart(2,'0')}] ${beat}</pre>
+      </details>`;
+  }
+
+  // ----------------------------- render: result -----------------------------
+  function renderResult(){
+    const j=entryById(state.selectedJob);
+    const box=$('#result');
+    if(!j){ box.innerHTML='<div class="empty">Нет выбранной задачи</div>'; $('#result-state').textContent='—'; $('#result-state').className='badge'; return; }
+    $('#result-state').className=`badge ${STATUS_CLS[state.rename&&state.rename===j.id?'rename':j.status]}`;
+    $('#result-state').textContent=STATUS_RU[state.rename&&state.rename===j.id?'rename':j.status];
+
+    if(j.status==='failed'){ return renderError(j,box); }
+    if(j.status==='queued'){ box.innerHTML=`<div class="meta-row">${badges(j)}</div><div class="empty">Задача ожидает очереди (№${j.queuePos}). Можно открыть другую задачу — эта не потеряется.</div>`; return; }
+    if(j.status==='running'){ box.innerHTML=`<div class="meta-row">${badges(j)}</div><div class="empty">Идёт «${STAGES[j.stage]}». Этапы и журнал — в центральной колонке. Результаты и спикеры появятся здесь после завершения.</div>`; return; }
+
+    // done → tabs
+    const tabs=[['overview','Обзор'],['text','Текст'],['speakers','Спикеры'],['files','Файлы']];
+    box.innerHTML=`
+      <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button class="tab ${state.resultTab===k?'active':''}" role="tab" aria-selected="${state.resultTab===k}" data-tab="${k}">${l}</button>`).join('')}</div>
+      <div id="tabpane"></div>`;
+    renderTab(j);
+  }
+
+  function badges(j){
+    return [
+      `<span class="badge ${STATUS_CLS[j.status]}"><span class="sd"></span>${STATUS_RU[j.status]}</span>`,
+      `<span class="badge">${j.mode}</span>`,
+      `<span class="badge">${j.spk}</span>`,
+      `<span class="badge mono">${j.out}</span>`,
+    ].join('');
+  }
+
+  function renderError(j,box){
+    const e=j.error;
+    box.innerHTML=`
+      <div class="meta-row">${badges(j)}</div>
+      <div class="errcard" role="alert">
+        <h3>⚠ ${e.title}</h3>
+        <p>${e.detail}</p>
+        <div class="row">${e.actions.map(a=>`<button class="btn sm ${a.kind==='primary'?'primary':''}">${a.label}</button>`).join('')}</div>
+      </div>
+      <details class="log"><summary>Технический лог (код ${e.code})</summary>
+        <pre class="log">Traceback (most recent call last):
+  ...
+huggingface_hub.errors.GatedRepoError: Access to model
+  pyannote/speaker-diarization-3.1 is restricted.
+Apply for access and accept the conditions.
+process exited with code ${e.code}</pre></details>`;
+  }
+
+  function renderTab(j){
+    const pane=$('#tabpane'); if(!pane) return;
+    if(state.resultTab==='overview'){
+      pane.innerHTML=`<div style="display:grid; gap:12px">
+        <div class="meta-row">${badges(j)}</div>
+        <dl class="kv">
+          <dt>Файл</dt><dd>${j.src}</dd>
+          <dt>Движок</dt><dd>${j.asr} · ${j.device}</dd>
+          <dt>Спикеры</dt><dd>${(SPEAKERS[j.id]||[]).length} найдено</dd>
+          <dt>Время обработки</dt><dd class="mono">${fmt(j.elapsed)}</dd>
+          <dt>Папка</dt><dd class="mono">${j.out}</dd>
+        </dl>
+        <div class="row"><button class="btn sm">Открыть папку результата</button><button class="btn sm">Повторить с теми же настройками</button></div>
+      </div>`;
+    } else if(state.resultTab==='text'){
+      const lines=(TRANSCRIPT[j.id]||[]).map(l=>`<div class="line"><span class="tc">${l.tc}</span><span><span class="who ${l.cls}">${l.who}:</span> ${l.text}</span></div>`).join('');
+      pane.innerHTML=`
+        <div class="setting-line"><span>Превью расшифровки</span>
+          <label class="check"><input type="checkbox" id="tc-toggle" ${state.showTc?'checked':''}><span>таймкоды</span></label>
+        </div>
+        <div class="transcript ${state.showTc?'':'no-tc'}" id="transcript">${lines}</div>
+        <div class="row"><button class="btn sm">Открыть полный Markdown</button><a class="hint" style="align-self:center" href="#">поиск по тексту →</a></div>`;
+    } else if(state.resultTab==='speakers'){
+      const sp=SPEAKERS[j.id]||[];
+      const renderStat=state.rename===j.id?'<span class="badge s-rename">перерендер экспорта…</span>':'';
+      pane.innerHTML=`
+        <p class="hint">Переименование быстрое: ASR и диаризация не запускаются заново. ${renderStat}</p>
+        <div style="display:grid; gap:10px">${sp.map(s=>`
+          <div class="spk-row">
+            <div class="spk-head"><span class="spk-color" style="background:${s.color}"></span>
+              <b>Спикер ${s.id}</b><span class="spk-stat">${s.segs} реплик · ${s.share} речи · первое ${s.first}</span></div>
+            <div class="player"><button class="play" aria-label="Проиграть образец спикера ${s.id}">▶</button>
+              <span class="wave">${Array.from({length:28},(_,i)=>`<i style="height:${4+Math.abs(Math.sin(i*0.7+s.id))*14}px"></i>`).join('')}</span>
+              <span class="time mono">0:${String(s.sample).padStart(2,'0')}</span></div>
+            <input data-spk-input="${s.id}" data-spk="${s.id}" value="${(state.names[j.id]&&state.names[j.id][s.id])||''}" placeholder="Имя спикера ${s.id}" aria-label="Имя спикера ${s.id}">
+          </div>`).join('')}</div>
+        <div class="row"><button class="btn primary sm" id="apply-names">Применить имена</button>
+          <span class="hint" style="align-self:center">экспорты обновятся без повторного распознавания</span></div>`;
+    } else if(state.resultTab==='files'){
+      const groups=EXPORTS[j.id]||[];
+      pane.innerHTML=`<div style="display:grid; gap:10px">${groups.map(g=>`
+        <div class="export-group"><h4>${g.group}</h4>
+          ${g.items.map(it=>`<a class="export" href="#">
+            <span class="ic">${it.ext==='.docx'?'W':it.ext==='.json'?'{}':it.ext==='.txt'?'T':'M'}</span>
+            <span><span class="et">${it.t}</span><br><span class="es">${it.s}</span></span>
+            <span class="ext">${it.ext}</span></a>`).join('')}
+        </div>`).join('')}</div>`;
+    }
+  }
+
+  // ----------------------------- worker pill -----------------------------
+  function renderWorker(){
+    const running=JOBS.some(j=>j.status==='running')||state.rename;
+    const w=$('#worker'); w.dataset.state=running?'running':'idle';
+    $('#worker-text').textContent=running?'воркер: обработка':'воркер: ожидание';
+  }
+
+  // ----------------------------- events -----------------------------
+  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{
+    state.runMode=b.dataset.mode; if(b.dataset.mode==='batch') setSpeakerMode('auto');
+    renderInbox(); renderRunSettings();
+  }));
+  document.querySelectorAll('[data-spk]').forEach(b=>b.addEventListener('click',()=>setSpeakerMode(b.dataset.spk)));
+  document.querySelectorAll('[data-clip]').forEach(c=>c.addEventListener('click',()=>{
+    state.clipDur=+c.dataset.clip; $('#clip-dur').value=fmt(state.clipDur); $('#clip-start').value='0:00'; renderRunSettings();
+  }));
+  ['clip-start','clip-dur'].forEach(id=>$('#'+id).addEventListener('input',renderRunSettings));
+  $('#device').addEventListener('change',renderRunSettings);
+
+  $('#filelist').addEventListener('click',e=>{
+    const open=e.target.closest('[data-open-result]');
+    if(open){ e.stopPropagation(); state.centerView='results'; state.selectedJob=open.dataset.openResult; state.resultTab='overview'; renderCenter(); renderResult(); renderWorkflow(); return; }
+    const chk=e.target.closest('[data-file-chk]');
+    if(chk){ const id=chk.dataset.fileChk; chk.checked?state.batch.add(id):state.batch.delete(id); renderRunSettings(); return; }
+    const row=e.target.closest('[data-file]');
+    if(row && state.runMode!=='batch'){ state.selectedSource=row.dataset.file; renderInbox(); renderRunSettings(); }
+  });
+  $('#filelist').addEventListener('keydown',e=>{
+    if((e.key==='Enter'||e.key===' ')&&e.target.dataset&&e.target.dataset.file&&state.runMode!=='batch'){
+      e.preventDefault(); state.selectedSource=e.target.dataset.file; renderInbox(); renderRunSettings(); }
+  });
+
+  $('#queue').addEventListener('click',e=>{
+    const row=e.target.closest('[data-job],[data-result]'); if(!row) return;
+    state.selectedJob=row.dataset.job||row.dataset.result; state.resultTab='overview';
+    renderCenter(); renderResult(); renderWorkflow();
+  });
+  $('#center-toggle').addEventListener('click',e=>{
+    const b=e.target.closest('[data-view]'); if(!b) return;
+    state.centerView=b.dataset.view; renderCenter();
+  });
+
+  $('#result').addEventListener('click',e=>{
+    const tab=e.target.closest('[data-tab]');
+    if(tab){ state.resultTab=tab.dataset.tab; renderResult(); return; }
+    if(e.target.id==='apply-names'){
+      const j=state.selectedJob; state.rename=j;
+      renderResult(); renderWorker();
+      setTimeout(()=>{ state.rename=null; renderResult(); renderWorker(); }, 1800);
+    }
+  });
+  $('#result').addEventListener('input',e=>{
+    if(e.target.dataset && e.target.dataset.spk!==undefined && e.target.dataset.spkInput!==undefined){
+      const id=state.selectedJob; state.names[id]=state.names[id]||{};
+      state.names[id][e.target.dataset.spk]=e.target.value;  // controlled → survives re-render (F2)
+    }
+  });
+  $('#result').addEventListener('change',e=>{ if(e.target.id==='tc-toggle'){ state.showTc=e.target.checked; const t=$('#transcript'); if(t)t.classList.toggle('no-tc',!state.showTc); } });
+  $('#result').addEventListener('keydown',e=>{   // arrow-key nav between result tabs (a11y)
+    if(!e.target.classList||!e.target.classList.contains('tab')) return;
+    const tabs=[...document.querySelectorAll('#result .tab')]; let i=tabs.indexOf(e.target);
+    if(e.key==='ArrowRight') i=(i+1)%tabs.length; else if(e.key==='ArrowLeft') i=(i-1+tabs.length)%tabs.length; else return;
+    e.preventDefault(); state.resultTab=tabs[i].dataset.tab; renderResult();
+    const next=document.querySelector(`#result .tab[data-tab="${state.resultTab}"]`); if(next) next.focus();
+  });
+
+  $('#upload-btn').addEventListener('click',()=>{ $('#upload-btn').textContent='Файлы появятся в Inbox без перезагрузки (прототип)'; setTimeout(()=>$('#upload-btn').textContent='＋ Добавить аудио в Inbox',1600); });
+  $('#run-btn').addEventListener('click',()=>{ $('#run-btn').textContent='Поставлено в очередь ✓'; setTimeout(renderRunSettings,1400); });
+
+  // ----------------------------- 2s polling simulation (proves F2 + animates F3) -----------------------------
+  setInterval(()=>{
+    const r=jobById('job-plan');
+    if(r && r.status==='running'){ r.elapsed+=2; if(r.elapsed%18===0 && r.stage<3) r.stage++; }
+    if(state.centerView==='queue') withPreservedFocus(renderQueue);   // queue refreshes; focus in name field preserved (F2)
+    const sel=entryById(state.selectedJob);
+    if(sel && sel.status==='running') withPreservedFocus(renderResult);
+    renderWorker();
+  }, 2000);
+
+  // ----------------------------- init -----------------------------
+  $('#mapping-body').innerHTML=MAPPING.map(r=>`<tr><td>${r[0]}</td><td class="id">${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+  renderWorkflow(); renderInbox(); setSpeakerMode('auto'); renderRunSettings(); renderCenter(); renderResult(); renderWorker();
+  </script>
+</body>
+</html>
