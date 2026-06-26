@@ -53,6 +53,12 @@ Do not edit code yet. Review the local Mac product plan and propose the smallest
 
 ## Next Implementation Tasks
 
+0. WhisperLiveKit research gate:
+   - read `docs/external-projects.md` section `QuentinFuxa/WhisperLiveKit`;
+   - decide whether to borrow model manager, doctor, benchmark, optional backend profile ideas;
+   - do not add live WebSocket, Docker, translation, chrome extension, or multi-user features to the local Mac product yet;
+   - write findings to `.agents/whisperlivekit-research.md` before implementing setup/engine registry changes.
+
 1. Local setup doctor:
    - detect Python version;
    - detect ffmpeg/ffprobe;

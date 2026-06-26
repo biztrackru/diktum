@@ -33,3 +33,53 @@ Source: https://gitverse.ru/daowolf/transcribe
 - локальная работа без интернета достигается за счет заранее собранного Docker-образа, а не чистой macOS-установки.
 
 Итог: берем архитектурные идеи, но продолжаем свой модульный пайплайн.
+
+## QuentinFuxa/WhisperLiveKit
+
+Source: https://github.com/QuentinFuxa/WhisperLiveKit
+
+Статус: обязательно изучить перед следующим большим implementation-блоком.
+
+Первичный вывод: проект не дублирует нашу главную задачу целиком, но закрывает часть смежной инфраструктуры лучше нас. WhisperLiveKit сильнее в real-time/self-host STT: WebSocket streaming, OpenAI-compatible API, модельный менеджер, бенчмарки, несколько Whisper/Voxtral/Qwen backend'ов, optional Apple Silicon MLX extras, Docker profiles и real-time diarization. Наш текущий фокус другой: локальный Mac-продукт для обычного пользователя, длинные готовые файлы, batch, GigaAM/GigaSTT для русского, speaker labeling и удобные экспорты.
+
+Что в нем есть:
+
+- `wlk transcribe` для транскрибации файла без сервера;
+- `wlk models`, `wlk pull`, `wlk rm` для управления моделями;
+- `wlk bench` и reproducible benchmark scripts;
+- OpenAI-compatible `/v1/audio/transcriptions`;
+- native WebSocket `/asr` для real-time streaming;
+- backend selector: MLX Whisper, Faster-Whisper, Whisper, OpenAI API, Voxtral, Qwen3/vLLM;
+- optional extras для Apple Silicon MLX, CPU, CUDA, translation, diarization;
+- diarization через Sortformer/Diart;
+- VAD/VAC и streaming policies для низкой задержки;
+- troubleshooting docs и production/Docker guide.
+
+Что стоит рассмотреть без раздувания фич:
+
+- модель `doctor + model manager`: понятные команды проверки/скачивания/удаления моделей;
+- benchmark harness как отдельный dev-инструмент для сравнения GigaAM vs Whisper/Voxtral на наших русских файлах;
+- optional WhisperLiveKit backend только для file transcription или локального OpenAI-compatible endpoint;
+- идею OpenAI-compatible local API как будущую интеграционную поверхность, не как обязательный основной UI;
+- dependency extras/profile matrix: не смешивать несовместимые backend'и в одном окружении;
+- troubleshooting формат для setup ошибок;
+- `wlk transcribe --format srt` как подсказку для будущих SRT/VTT exports.
+
+Что пока не берем:
+
+- live microphone/WebSocket UI как главную функцию;
+- Docker/self-host production profile до готового локального Mac-продукта;
+- translation;
+- chrome extension;
+- multi-user server logic;
+- полный набор backend'ов и optional extras.
+
+Вопросы research-gate:
+
+1. Можно ли подключить WhisperLiveKit как optional local Whisper backend без переписывания нашего pipeline?
+2. Есть ли смысл использовать его CLI/API вместо собственной Whisper-интеграции?
+3. Насколько хорошо его Apple Silicon MLX profile работает на русских диктофонных файлах?
+4. Может ли его benchmark framework стать основой нашего quality benchmark?
+5. Какие license/NOTICE условия Apache-2.0 надо выполнить, если мы берем код, а не только идеи?
+
+Итог: не заменяем наш продукт WhisperLiveKit'ом, но до implementation setup/engine registry делаем короткое сравнение и берем только узкие инфраструктурные идеи.

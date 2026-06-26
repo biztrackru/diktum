@@ -28,6 +28,13 @@
 
 Цель: пользователь без технического опыта может подготовить и запустить приложение через double-click файлы.
 
+Research-gate перед реализацией:
+
+- изучить `QuentinFuxa/WhisperLiveKit` как референс local/self-host STT toolkit;
+- решить, берем ли оттуда подход к model manager, doctor, benchmark и optional backend profiles;
+- проверить, не выгоднее ли подключать WhisperLiveKit как optional Whisper backend вместо собственной Whisper-обвязки;
+- явно не тащить live/WebSocket/Docker/translation фичи в локальный Mac setup, если они не нужны текущему пользовательскому пути.
+
 Задачи:
 
 - добавить `Setup Voice Recognizer.command`;
@@ -88,6 +95,13 @@
 ## Этап 4. Выбор движков и локальных моделей
 
 Цель: пользователь выбирает качество/скорость/модель, а система объясняет последствия.
+
+Research-gate перед реализацией:
+
+- сравнить наш engine registry plan с backend selector WhisperLiveKit;
+- проверить `wlk transcribe` и OpenAI-compatible local API как возможные adapter targets;
+- отдельно оценить WhisperLiveKit Apple Silicon MLX backend на русских sample-файлах;
+- не добавлять новые движки без понятной value proposition для русского batch/file workflow.
 
 Задачи:
 
