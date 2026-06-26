@@ -388,6 +388,28 @@ Checks:
 - mobile viewport 390px: same overview fields render, no horizontal overflow;
 - test server stopped.
 
+### Implementation Left/Middle Prototype Alignment
+
+Status: DELIVERED (2026-06-27), Codex. Bring the Inbox and center workbench closer to Claude's UX prototype.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Left/Middle Prototype Alignment` block in `.agents/task-board.md`
+
+Goal:
+
+- make Inbox processed badges explicit click-through actions such as `обработан · готово →`;
+- combine queue and disk results into one center `Работа` panel with `Очередь / Готовые` switching;
+- keep result opening, queue state and existing APIs unchanged.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- in-app Browser on `http://127.0.0.1:8782/`: queue view shows only jobs/queue badges, ready-results view shows 15 results/result badge, opening a ready result keeps `Готовые` active and renders the right column, console clean;
+- mobile viewport 390px: Inbox badges, center switch and ready-results list render with no horizontal overflow;
+- fixed hidden-state CSS so list/badge `hidden` is not overridden by component `display` rules.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

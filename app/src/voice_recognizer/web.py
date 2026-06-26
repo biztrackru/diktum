@@ -283,6 +283,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }}
     * {{ box-sizing: border-box; }}
+    [hidden] {{ display: none !important; }}
     body {{
       margin: 0;
       min-height: 100vh;
@@ -606,6 +607,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .run-segmented {{
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }}
+    .center-switch {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      min-width: 176px;
+      flex: 0 0 176px;
+    }}
     .clip-tools {{
       display: grid;
       gap: 8px;
@@ -816,6 +822,14 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+    }}
+    .work-panel .panel-head {{
+      flex-wrap: wrap;
+    }}
+    .work-panel .job-list,
+    .work-panel .result-list {{
+      min-height: 300px;
+      max-height: 52vh;
     }}
     .job-list {{
       display: grid;
@@ -1421,28 +1435,25 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       </aside>
 
       <section class="workbench">
-        <section class="panel">
+        <section class="panel work-panel">
           <div class="panel-head">
             <div class="panel-title">
-              <h2>Очередь</h2>
+              <h2>Работа</h2>
+            </div>
+            <div class="segmented center-switch" role="group" aria-label="Центральный список">
+              <button class="segment active" type="button" data-center-view="queue">Очередь</button>
+              <button class="segment" type="button" data-center-view="results">Готовые</button>
             </div>
             <div class="queue-summary" aria-live="polite">
-              <span class="badge" id="job-count">0</span>
-              <span class="badge queued" id="queued-count">0 ожидает</span>
-              <span class="badge running" id="running-count">0 выполняется</span>
-              <span class="badge done" id="done-count">0 готово</span>
+              <span class="badge" id="job-count" data-center-summary="queue">0</span>
+              <span class="badge queued" id="queued-count" data-center-summary="queue">0 ожидает</span>
+              <span class="badge running" id="running-count" data-center-summary="queue">0 выполняется</span>
+              <span class="badge done" id="done-count" data-center-summary="queue">0 готово</span>
+              <span class="badge" id="result-count" data-center-summary="results" hidden>0 готово</span>
             </div>
           </div>
-          <div class="job-list" id="jobs"><div class="empty">Нет задач</div></div>
-        </section>
-        <section class="panel">
-          <div class="panel-head">
-            <div class="panel-title">
-              <h2>Готовые</h2>
-            </div>
-            <span class="badge" id="result-count">0 готово</span>
-          </div>
-          <div class="result-list" id="results-list"><div class="empty">Готовые результаты появятся здесь после обработки</div></div>
+          <div class="job-list center-list" id="jobs" data-center-list="queue"><div class="empty">Нет задач</div></div>
+          <div class="result-list center-list" id="results-list" data-center-list="results" hidden><div class="empty">Готовые результаты появятся здесь после обработки</div></div>
         </section>
         <section class="panel">
           <div class="panel-head">
@@ -1488,6 +1499,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const resultState = document.querySelector("#result-state");
     const runModeLabel = document.querySelector("#run-mode-label");
     const modeButtons = document.querySelectorAll(".segment[data-mode]");
+    const centerButtons = document.querySelectorAll(".segment[data-center-view]");
     const workflowSteps = document.querySelectorAll(".workflow-step[data-workflow-step]");
     const clipTools = document.querySelector("#clip-tools");
     const clipReadout = document.querySelector("#clip-readout");
@@ -1507,6 +1519,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let activeView = "job";
     let renderedResultKey = null;
     let runMode = "single";
+    let centerView = "queue";
     let speakerMode = "auto";
     let diskResults = [];
     let inboxFiles = [];
@@ -1552,6 +1565,21 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       updateClipReadout();
       updateBatchSelectionSummary();
       if (activeView !== "job" || !activeJobId) updateWorkflow();
+    }}
+
+    function setCenterView(view) {{
+      centerView = view === "results" ? "results" : "queue";
+      centerButtons.forEach((button) => {{
+        const active = button.dataset.centerView === centerView;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      }});
+      document.querySelectorAll("[data-center-list]").forEach((list) => {{
+        list.hidden = list.dataset.centerList !== centerView;
+      }});
+      document.querySelectorAll("[data-center-summary]").forEach((badge) => {{
+        badge.hidden = badge.dataset.centerSummary !== centerView;
+      }});
     }}
 
     function updateWorkflow(job = null, options = {{}}) {{
@@ -1729,6 +1757,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     modeButtons.forEach((button) => {{
       button.addEventListener("click", () => setRunMode(button.dataset.mode));
     }});
+    centerButtons.forEach((button) => {{
+      button.addEventListener("click", () => setCenterView(button.dataset.centerView));
+    }});
     presetButtons.forEach((button) => {{
       button.addEventListener("click", () => {{
         form.elements.start.value = button.dataset.start || "0";
@@ -1776,6 +1807,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         activeJobId = payload.id;
         activeResultId = null;
         activeView = "job";
+        setCenterView("queue");
         await loadJobs();
       }} catch (error) {{
         logNode.textContent = String(error);
@@ -1803,6 +1835,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if (firstJobId) activeJobId = firstJobId;
         activeResultId = null;
         activeView = "job";
+        setCenterView("queue");
         setRunMode("batch");
         await loadJobs();
       }} catch (error) {{
@@ -1925,10 +1958,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function inboxResultLabel(results) {{
       if (!results || !results.length) return "";
       const latest = results[0];
-      if (sourceFreshnessStatus(latest) === "changed") return "обновить";
+      if (sourceFreshnessStatus(latest) === "changed") return "обновить →";
       if (sourceFreshnessStatus(latest) === "missing") return "нет исходника";
-      if (results.length > 1) return `${{results.length}} готово`;
-      return latest.kind === "clip" ? "фрагмент готов" : "готово";
+      if (results.length > 1) return `обработан · ${{results.length}} готово →`;
+      return latest.kind === "clip" ? "фрагмент готов →" : "обработан · готово →";
     }}
 
     function syncBatchSelectionWithFiles(files) {{
@@ -2020,6 +2053,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       document.querySelectorAll(".job-row").forEach((row) => {{
         row.addEventListener("click", () => {{
+          setCenterView("queue");
           activeView = "job";
           activeJobId = row.dataset.job;
           activeResultId = null;
@@ -2078,6 +2112,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       activeView = "result";
       activeResultId = result.id;
       renderedResultKey = null;
+      setCenterView("results");
       setStatusBadge(activeJobNode, "done", "готовый");
       setStatusBadge(resultState, statusClass(result.status), statusLabel(result.status));
       setLogText((result.log || []).join(""), {{ forceBottom: true }});
@@ -2903,6 +2938,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     setSpeakerMode("auto");
     setRunMode("single");
+    setCenterView("queue");
     syncFileSelection();
     loadResults();
     loadInbox();
