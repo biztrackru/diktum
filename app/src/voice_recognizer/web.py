@@ -3156,34 +3156,40 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
     if not manifest:
         return None
     try:
-        completed_at = manifest_path.stat().st_mtime
+        manifest_modified_at = manifest_path.stat().st_mtime
     except OSError:
-        completed_at = time.time()
+        manifest_modified_at = time.time()
+    completed_at = _optional_float_value(manifest.get("completed_at")) or manifest_modified_at
+    created_at = _optional_float_value(manifest.get("created_at")) or completed_at
     files = _manifest_files(manifest, root)
     samples = _manifest_samples(manifest, root)
-    clip_start, clip_duration = _clip_window_from_manifest_path(manifest_path)
+    clip_start, clip_duration = _manifest_clip_window(manifest, manifest_path)
     source_name = _manifest_source_name(manifest, manifest_path)
     source_freshness = _manifest_source_freshness(manifest, manifest_path, root, completed_at)
     markdown_url = next((file["url"] for file in files if file.get("key") == "detailed_markdown"), None)
     speaker_count = _optional_int_value(manifest.get("speaker_count"))
+    constraint_num, constraint_min, constraint_max = _manifest_speaker_constraints(manifest)
+    speaker_mode = "exact" if constraint_num else "range" if constraint_min or constraint_max else "auto"
     return {
         "id": _result_id(manifest_path, root),
         "source_name": source_name,
         "source": str(manifest.get("source") or ""),
         "status": "done" if files else "partial",
         "returncode": 0 if files else None,
-        "created_at": completed_at,
+        "created_at": created_at,
         "completed_at": completed_at,
         "log": [f"Готовый результат из {_relative_display(root, manifest_path)}\n"],
         "asr_engine": str(manifest.get("asr_engine") or ""),
         "device": str(manifest.get("device") or ""),
-        "speaker_mode": "auto",
+        "speaker_mode": speaker_mode,
         "start": clip_start,
         "duration": clip_duration,
-        "recording_duration": _optional_float_value(manifest.get("duration")),
-        "num_speakers": speaker_count,
-        "min_speakers": None,
-        "max_speakers": None,
+        "recording_duration": _optional_float_value(manifest.get("result_duration"))
+        or _optional_float_value(manifest.get("duration")),
+        "detected_speaker_count": speaker_count,
+        "num_speakers": constraint_num or speaker_count,
+        "min_speakers": constraint_min,
+        "max_speakers": constraint_max,
         "output_dir": _relative_display(root, manifest_path.parent),
         "markdown_url": markdown_url,
         "files": files,
@@ -3223,6 +3229,25 @@ def _clip_window_from_manifest_path(manifest_path: Path) -> tuple[float | None, 
     except ValueError:
         return None, None
     return start, duration
+
+
+def _manifest_clip_window(manifest: dict[str, object], manifest_path: Path) -> tuple[float | None, float | None]:
+    start = _optional_float_value(manifest.get("clip_start"))
+    duration = _optional_float_value(manifest.get("clip_duration"))
+    if start is not None or duration is not None:
+        return start, duration
+    return _clip_window_from_manifest_path(manifest_path)
+
+
+def _manifest_speaker_constraints(manifest: dict[str, object]) -> tuple[int | None, int | None, int | None]:
+    constraints = manifest.get("speaker_constraints")
+    if not isinstance(constraints, dict):
+        return None, None, None
+    return (
+        _optional_int_value(constraints.get("num_speakers")),
+        _optional_int_value(constraints.get("min_speakers")),
+        _optional_int_value(constraints.get("max_speakers")),
+    )
 
 
 def _find_result_manifest(result_id: str, root: Path) -> Path:
@@ -3334,7 +3359,8 @@ def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) 
     manifest_path = _find_result_manifest(result_id, root)
     manifest = _read_manifest(manifest_path)
     source_path = _manifest_source_path(manifest, root)
-    start, duration = _clip_window_from_manifest_path(manifest_path)
+    start, duration = _manifest_clip_window(manifest, manifest_path)
+    num_speakers, min_speakers, max_speakers = _manifest_speaker_constraints(manifest)
     asr_engine = normalize_asr_engine(str(manifest.get("asr_engine") or DEFAULT_ASR_ENGINE))
     device = str(manifest.get("device") or "auto")
     command = [
@@ -3356,6 +3382,12 @@ def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) 
         command.extend(["--start", str(start)])
     if duration is not None:
         command.extend(["--duration", str(duration)])
+    if num_speakers is not None:
+        command.extend(["--num-speakers", str(num_speakers)])
+    if min_speakers is not None:
+        command.extend(["--min-speakers", str(min_speakers)])
+    if max_speakers is not None:
+        command.extend(["--max-speakers", str(max_speakers)])
 
     env = os.environ.copy()
     env.update(_read_dotenv(root / ".env"))
@@ -3385,7 +3417,8 @@ def _create_result_rerun_job(result_id: str, root: Path) -> Job:
     if not manifest:
         raise ValueError("result manifest disappeared")
     source_path = _manifest_source_path(manifest, root)
-    start, duration = _clip_window_from_manifest_path(manifest_path)
+    start, duration = _manifest_clip_window(manifest, manifest_path)
+    num_speakers, min_speakers, max_speakers = _manifest_speaker_constraints(manifest)
     asr_engine = normalize_asr_engine(str(manifest.get("asr_engine") or DEFAULT_ASR_ENGINE))
     device = str(manifest.get("device") or "auto")
     speaker_names = _speaker_names_payload_to_cli(manifest.get("speaker_names"))
@@ -3397,9 +3430,9 @@ def _create_result_rerun_job(result_id: str, root: Path) -> Job:
         device=device,
         asr_engine=asr_engine,
         speaker_mode="auto",
-        num_speakers=None,
-        min_speakers=None,
-        max_speakers=None,
+        num_speakers=num_speakers,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
         speaker_names=speaker_names,
         overwrite=True,
         root=root,
@@ -3419,6 +3452,7 @@ def _manifest_source_freshness(
         "source_changed": False,
         "source_missing": False,
         "source_modified_at": None,
+        "source_size": None,
         "source_path": "",
     }
     if not raw_source:
@@ -3447,17 +3481,30 @@ def _manifest_source_freshness(
         return base
 
     try:
-        source_modified_at = source_path.stat().st_mtime
+        source_stat = source_path.stat()
     except OSError:
         return base
 
-    changed = source_modified_at > completed_at + SOURCE_FRESHNESS_TOLERANCE_SECONDS
+    source_modified_at = source_stat.st_mtime
+    stored_source_mtime = _optional_float_value(manifest.get("source_mtime"))
+    stored_source_size = _optional_int_value(manifest.get("source_size"))
+    if stored_source_mtime is not None or stored_source_size is not None:
+        changed = (
+            stored_source_size is not None
+            and source_stat.st_size != stored_source_size
+        ) or (
+            stored_source_mtime is not None
+            and abs(source_modified_at - stored_source_mtime) > SOURCE_FRESHNESS_TOLERANCE_SECONDS
+        )
+    else:
+        changed = source_modified_at > completed_at + SOURCE_FRESHNESS_TOLERANCE_SECONDS
     base.update(
         {
             "source_status": "changed" if changed else "fresh",
             "source_status_label": "исходник изменился" if changed else "исходник свежий",
             "source_changed": changed,
             "source_modified_at": source_modified_at,
+            "source_size": source_stat.st_size,
         }
     )
     return base

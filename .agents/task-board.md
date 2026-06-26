@@ -342,6 +342,30 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: ASR settings show `GigaSTT готов` / `GigaAM v3 найден локально`, console clean;
 - mobile viewport 390px: no horizontal overflow.
 
+### Implementation Manifest Metadata Contract
+
+Status: DELIVERED (2026-06-27), Codex. Enrich new manifests with explicit run metadata.
+
+Scope:
+
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Manifest Metadata Contract` block in `.agents/task-board.md`
+
+Goal:
+
+- write explicit clip, device, timing and source file metadata to new manifests;
+- keep old manifests readable via filename/stat fallbacks;
+- use explicit manifest fields for disk-result preview, speaker renaming and rerun where available.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- manifest v2 smoke: `_write_manifest` stores `clip_start`, `clip_duration`, `device`, source size/mtime, created/completed timestamps and speaker constraints;
+- web payload smoke: `_result_payload` reads explicit manifest fields and `_create_result_rerun_job` preserves clip/device/speaker constraints;
+- source freshness smoke: unchanged v2 source is `fresh`, size-changed source becomes `changed`;
+- legacy manifest smoke: old filename-based clip fallback still returns `5.0 / 10.0`.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

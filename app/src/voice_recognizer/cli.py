@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -474,14 +475,44 @@ def _write_manifest(
     word_count: int,
     speaker_count: int,
     asr_engine: str,
+    device: str,
+    start: float | None,
+    clip_duration: float | None,
+    num_speakers: int | None,
+    min_speakers: int | None,
+    max_speakers: int | None,
+    created_at: float,
+    completed_at: float,
 ) -> Path:
+    try:
+        source_stat = source.stat()
+        source_size: int | None = source_stat.st_size
+        source_mtime: float | None = source_stat.st_mtime
+    except OSError:
+        source_size = None
+        source_mtime = None
     payload = {
+        "manifest_version": 2,
+        "status": "done",
+        "created_at": created_at,
+        "completed_at": completed_at,
         "source": str(source),
+        "source_size": source_size,
+        "source_mtime": source_mtime,
         "audio": str(audio_path),
         "duration": duration,
+        "result_duration": duration,
+        "clip_start": start,
+        "clip_duration": clip_duration,
         "word_count": word_count,
         "speaker_count": speaker_count,
         "asr_engine": asr_engine,
+        "device": device,
+        "speaker_constraints": {
+            "num_speakers": num_speakers,
+            "min_speakers": min_speakers,
+            "max_speakers": max_speakers,
+        },
         "asr_json": str(asr_json),
         "diarization_json": str(diarization_json),
         "outputs": {key: str(value) for key, value in outputs.items()},
@@ -519,6 +550,7 @@ def _run_pipeline_to_outputs(
     skip_existing: bool = True,
 ) -> PipelineOutputs:
     asr_engine = normalize_asr_engine(asr_engine)
+    created_at = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{safe_stem(source)}{_clip_suffix(start, duration)}"
     audio_path = cache_dir / f"{stem}.wav"
@@ -614,6 +646,14 @@ def _run_pipeline_to_outputs(
         word_count=len(result.words),
         speaker_count=speaker_count,
         asr_engine=asr_engine,
+        device=device,
+        start=start,
+        clip_duration=duration,
+        num_speakers=num_speakers,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
+        created_at=created_at,
+        completed_at=time.time(),
     )
     console.print(f"[green]Markdown:[/green] {outputs['detailed_markdown']}")
     console.print(f"[green]Clean Markdown:[/green] {outputs['clean_markdown']}")
