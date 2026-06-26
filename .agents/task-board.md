@@ -253,6 +253,27 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: disk result opens with Text tab by default, transcript preview loads from export file, Speakers tab contains audio/name/apply controls, Files tab keeps grouped exports, Overview tab shows metadata, console clean;
 - mobile viewport 390px: result tabs render after opening a result, no horizontal overflow.
 
+### Implementation Privacy Signal
+
+Status: DELIVERED (2026-06-26), Codex. Make local/private mode explicit in the UI.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Privacy Signal` block in `.agents/task-board.md`
+
+Goal:
+
+- show that the app is running locally on `127.0.0.1`;
+- state that audio and transcripts stay on this Mac unless the user explicitly chooses another engine/profile later;
+- keep the top bar compact on mobile.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- in-app Browser on `http://127.0.0.1:8782/`: top bar shows `Локально · 127.0.0.1:8782` and `Аудио и тексты остаются на этом Mac`;
+- mobile viewport 390px: no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

@@ -347,11 +347,27 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .topbar-status {{
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 0;
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
-      white-space: nowrap;
+      text-align: right;
+    }}
+    .local-status-text {{
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+      line-height: 1.2;
+    }}
+    .local-address {{
+      color: var(--text);
+      font-weight: 820;
+    }}
+    .local-privacy {{
+      color: var(--muted);
+      font-weight: 650;
     }}
     .status-dot {{
       width: 10px;
@@ -1189,6 +1205,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         align-items: flex-start;
         flex-direction: column;
       }}
+      .topbar-status {{
+        justify-content: flex-start;
+        text-align: left;
+      }}
       .workflow {{
         grid-template-columns: 1fr;
         padding: 6px 14px;
@@ -1231,7 +1251,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       </div>
       <div class="topbar-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>127.0.0.1:{self.web_config.port}</span>
+        <span class="local-status-text">
+          <span class="local-address">Локально · 127.0.0.1:{self.web_config.port}</span>
+          <span class="local-privacy">Аудио и тексты остаются на этом Mac</span>
+        </span>
       </div>
     </header>
     <nav class="workflow" aria-label="Workflow">
