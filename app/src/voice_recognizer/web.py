@@ -477,6 +477,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .btn:focus-visible,
     .segment:focus-visible,
     .preset-button:focus-visible,
+    .batch-select:focus-within,
     .file-row:focus-visible,
     .job-row:focus-visible,
     .result-row:focus-visible,
@@ -574,6 +575,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-size: 12px;
       font-weight: 780;
     }}
+    .batch-tools {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }}
+    .batch-tools[hidden] {{
+      display: none;
+    }}
     .actions {{
       display: flex;
       flex-wrap: wrap;
@@ -627,6 +637,34 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       gap: 6px;
       max-height: 240px;
       overflow: auto;
+    }}
+    .file-item {{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      align-items: stretch;
+    }}
+    .batch-select {{
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      min-height: 42px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+    }}
+    .batch-select input {{
+      width: 16px;
+      height: 16px;
+      padding: 0;
+    }}
+    .file-list.batch-mode .file-item {{
+      grid-template-columns: auto minmax(0, 1fr);
+    }}
+    .file-list.batch-mode .batch-select {{
+      display: inline-grid;
     }}
     .file-row {{
       width: 100%;
@@ -1116,6 +1154,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                 <button class="segment" id="mode-clip" type="button" data-mode="clip">Тест-фрагмент</button>
                 <button class="segment" id="mode-batch" type="button" data-mode="batch">Весь Inbox</button>
               </div>
+              <div class="batch-tools" id="batch-tools" hidden>
+                <span class="badge" id="batch-selection-count">0 выбрано</span>
+                <button class="preset-button" type="button" data-batch-action="all">Все</button>
+                <button class="preset-button" type="button" data-batch-action="none">Ни одного</button>
+              </div>
               <div class="grid-2">
                 <label>Старт
                   <input name="start" inputmode="decimal" placeholder="0 или 1:20">
@@ -1257,6 +1300,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const modeButtons = document.querySelectorAll(".segment[data-mode]");
     const workflowSteps = document.querySelectorAll(".workflow-step[data-workflow-step]");
     const clipTools = document.querySelector("#clip-tools");
+    const batchTools = document.querySelector("#batch-tools");
+    const batchSelectionCount = document.querySelector("#batch-selection-count");
+    const batchActionButtons = document.querySelectorAll("[data-batch-action]");
     const presetButtons = document.querySelectorAll(".preset-button[data-duration]");
     const speakerModeLabel = document.querySelector("#speaker-mode-label");
     const speakerModeButtons = document.querySelectorAll(".segment[data-speaker-mode]");
@@ -1272,6 +1318,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let runMode = "single";
     let speakerMode = "auto";
     let diskResults = [];
+    let batchSelectedFiles = new Set();
+    let batchKnownFiles = new Set();
+    let batchSelectionReady = false;
     const speakerNameDrafts = new Map();
     const pipelineStages = [
       {{ key: "audio", label: "Аудио" }},
@@ -1296,11 +1345,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       runButton.textContent = runMode === "batch" ? "Поставить весь Inbox" : runMode === "clip" ? "Запустить фрагмент" : "Запустить полный файл";
       queueAllButton.hidden = runMode === "batch";
       clipTools.hidden = runMode !== "clip";
+      batchTools.hidden = runMode !== "batch";
+      fileList.classList.toggle("batch-mode", runMode === "batch");
+      sourceSelect.disabled = runMode === "batch" || !sourceSelect.options.length;
       if (runMode === "clip" && !speakerInputs.exact.form.elements.duration.value.trim()) {{
         speakerInputs.exact.form.elements.start.value = "0";
         speakerInputs.exact.form.elements.duration.value = "2:00";
       }}
       if (runMode === "batch") setSpeakerMode("auto");
+      updateBatchSelectionSummary();
       if (activeView !== "job" || !activeJobId) updateWorkflow();
     }}
 
@@ -1405,10 +1458,23 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
       const row = event.target.closest(".file-row");
       if (!row) return;
+      if (runMode === "batch") {{
+        const checkbox = row.closest(".file-item")?.querySelector(".batch-file-checkbox");
+        if (checkbox) {{
+          checkbox.checked = !checkbox.checked;
+          updateBatchSelectionFromInput(checkbox);
+        }}
+        return;
+      }}
       sourceSelect.value = row.dataset.file;
       setRunMode("single");
       syncFileSelection();
       updateWorkflow();
+    }});
+    fileList.addEventListener("change", (event) => {{
+      const checkbox = event.target.closest(".batch-file-checkbox");
+      if (!checkbox) return;
+      updateBatchSelectionFromInput(checkbox);
     }});
 
     sourceSelect.addEventListener("change", () => {{
@@ -1424,6 +1490,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         form.elements.start.value = button.dataset.start || "0";
         form.elements.duration.value = formatPresetDuration(button.dataset.duration);
         setRunMode("clip");
+      }});
+    }});
+    batchActionButtons.forEach((button) => {{
+      button.addEventListener("click", () => {{
+        const names = Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
+        batchSelectedFiles = button.dataset.batchAction === "all" ? new Set(names) : new Set();
+        batchSelectionReady = true;
+        renderBatchChecks();
+        updateBatchSelectionSummary();
       }});
     }});
     speakerModeButtons.forEach((button) => {{
@@ -1467,9 +1542,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
 
     async function queueAllJobs() {{
-      const sources = Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
+      const sources = runMode === "batch"
+        ? batchSelectedSources()
+        : Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
       if (!sources.length) {{
-        logNode.textContent = "Inbox пуст";
+        logNode.textContent = runMode === "batch" ? "Выберите хотя бы один файл для пакетной обработки" : "Inbox пуст";
         return;
       }}
       runButton.disabled = true;
@@ -1549,6 +1626,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         return;
       }}
       const files = payload.files || [];
+      syncBatchSelectionWithFiles(files);
       const previous = preferredSource || sourceSelect.value;
       sourceSelect.innerHTML = files.map((file) => (
         `<option value="${{escapeAttribute(file.name)}}">${{escapeHtml(file.name)}}</option>`
@@ -1563,10 +1641,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         sourceSelect.value = previous;
       }}
       const hasFiles = files.length > 0;
-      sourceSelect.disabled = !hasFiles;
+      sourceSelect.disabled = !hasFiles || runMode === "batch";
       runButton.disabled = !hasFiles;
       queueAllButton.disabled = !hasFiles;
       syncFileSelection();
+      renderBatchChecks();
+      updateBatchSelectionSummary();
       updateWorkflow();
     }}
 
@@ -1581,22 +1661,74 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         file.format_label,
         file.modified_label,
       ].filter(Boolean);
-      return `<button class="file-row ${{latest ? "processed" : ""}}" type="button" data-file="${{escapeAttribute(file.name)}}">
-        <span class="file-main">
-          <span class="file-title">
-            <span class="file-name">${{escapeHtml(file.name)}}</span>
-            ${{processed}}
+      const checked = batchSelectedFiles.has(file.name) ? " checked" : "";
+      return `<div class="file-item">
+        <label class="batch-select" title="Включить в пакет">
+          <input class="batch-file-checkbox" type="checkbox" value="${{escapeAttribute(file.name)}}"${{checked}}>
+        </label>
+        <button class="file-row ${{latest ? "processed" : ""}}" type="button" data-file="${{escapeAttribute(file.name)}}">
+          <span class="file-main">
+            <span class="file-title">
+              <span class="file-name">${{escapeHtml(file.name)}}</span>
+              ${{processed}}
+            </span>
+            <span class="file-subline">${{meta.map((item) => `<span>${{escapeHtml(item)}}</span>`).join("")}}</span>
           </span>
-          <span class="file-subline">${{meta.map((item) => `<span>${{escapeHtml(item)}}</span>`).join("")}}</span>
-        </span>
-        <span class="file-size">${{escapeHtml(file.size_label)}}</span>
-      </button>`;
+          <span class="file-size">${{escapeHtml(file.size_label)}}</span>
+        </button>
+      </div>`;
     }}
 
     function inboxResultLabel(results) {{
       if (!results || !results.length) return "";
       if (results.length > 1) return `${{results.length}} готово`;
       return results[0].kind === "clip" ? "фрагмент готов" : "готово";
+    }}
+
+    function syncBatchSelectionWithFiles(files) {{
+      const names = files.map((file) => file.name);
+      const currentNames = new Set(names);
+      if (!batchSelectionReady) {{
+        batchSelectedFiles = new Set(names);
+        batchKnownFiles = currentNames;
+        batchSelectionReady = true;
+        return;
+      }}
+      batchSelectedFiles = new Set(Array.from(batchSelectedFiles).filter((name) => currentNames.has(name)));
+      names.forEach((name) => {{
+        if (!batchKnownFiles.has(name)) batchSelectedFiles.add(name);
+      }});
+      batchKnownFiles = currentNames;
+    }}
+
+    function updateBatchSelectionFromInput(input) {{
+      if (input.checked) {{
+        batchSelectedFiles.add(input.value);
+      }} else {{
+        batchSelectedFiles.delete(input.value);
+      }}
+      batchSelectionReady = true;
+      updateBatchSelectionSummary();
+    }}
+
+    function renderBatchChecks() {{
+      document.querySelectorAll(".batch-file-checkbox").forEach((input) => {{
+        input.checked = batchSelectedFiles.has(input.value);
+      }});
+    }}
+
+    function batchSelectedSources() {{
+      return Array.from(document.querySelectorAll(".batch-file-checkbox:checked"))
+        .map((input) => input.value)
+        .filter(Boolean);
+    }}
+
+    function updateBatchSelectionSummary() {{
+      if (!batchSelectionCount) return;
+      const selected = batchSelectedSources().length || batchSelectedFiles.size;
+      const total = sourceSelect.options.length;
+      batchSelectionCount.textContent = `${{selected}} из ${{total}} выбрано`;
+      runButton.disabled = total === 0 || (runMode === "batch" && selected === 0);
     }}
 
     async function loadJobs() {{

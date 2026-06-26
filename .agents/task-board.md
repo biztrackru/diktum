@@ -169,6 +169,27 @@ Checks:
 - `.venv/bin/python -m compileall app/src`;
 - Chrome/Playwright on `http://127.0.0.1:8782/`: workflow moves from settings to export, status regions expose `aria-live=polite`, log no longer auto-scrolls when reading from top, console clean, desktop/mobile no horizontal overflow.
 
+### Implementation F11
+
+Status: DELIVERED (2026-06-26), Codex. UX implementation for controlled batch selection.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation F11` block in `.agents/task-board.md`
+
+Goal:
+
+- F11: in batch mode, let the user include/exclude Inbox files before queueing;
+- keep single-file and test-fragment selection unchanged;
+- avoid uncontrolled heavy batch starts.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- in-app Browser on `http://127.0.0.1:8782/`: batch mode exposes 5 checkboxes, `Все` selects all, `Ни одного` disables run, row click toggles one file and updates `4 из 5 выбрано`, console clean;
+- mobile viewport 390px: no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
