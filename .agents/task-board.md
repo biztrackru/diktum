@@ -320,6 +320,28 @@ Checks:
 - mobile viewport 390px: no horizontal overflow and rerun action remains visible;
 - temporary smoke source/result files removed and test server stopped.
 
+### Implementation Engine Readiness Signal
+
+Status: DELIVERED (2026-06-27), Codex. Show whether the local GigaSTT/GigaAM engine is actually ready.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Engine Readiness Signal` block in `.agents/task-board.md`
+
+Goal:
+
+- check local GigaSTT binary and GigaAM model files without network calls;
+- show a compact ready/missing status next to ASR engine selection;
+- keep unavailable Handy engines disabled until their runtime backends are integrated.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- backend smoke with `PYTHONPATH=app/src`: `_asr_runtime_status` returns `GigaSTT готов` on this Mac;
+- in-app Browser on `http://127.0.0.1:8782/`: ASR settings show `GigaSTT готов` / `GigaAM v3 найден локально`, console clean;
+- mobile viewport 390px: no horizontal overflow.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

@@ -253,6 +253,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             _render_asr_engine_option(choice.value, choice.label, choice.available)
             for choice in ASR_ENGINE_CHOICES
         )
+        engine_status = _asr_runtime_status(self.web_config.root)
         output_dir = _relative_display(self.web_config.root, self.web_config.output_dir)
         return f"""<!doctype html>
 <html lang="ru">
@@ -560,6 +561,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       color: var(--muted);
       font-size: 12px;
       font-weight: 760;
+    }}
+    .engine-status {{
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
     }}
     .speaker-controls {{
       display: grid;
@@ -1354,6 +1365,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                   <select name="asr_engine">
                     {asr_options}
                   </select>
+                  <span class="engine-status" title="{html.escape(engine_status['title'])}">
+                    <span class="badge {html.escape(engine_status['class'])}">{html.escape(engine_status['label'])}</span>
+                    <span>{html.escape(engine_status['detail'])}</span>
+                  </span>
                 </label>
                 <label>Устройство
                   <select name="device">
@@ -3846,6 +3861,37 @@ def _render_asr_engine_option(value: str, label: str, available: bool) -> str:
         f'<option value="{html.escape(value)}"{selected}{disabled}>'
         f"{html.escape(label + suffix)}</option>"
     )
+
+
+def _asr_runtime_status(root: Path) -> dict[str, str]:
+    gigastt_bin = root / "tools" / "bin" / "gigastt"
+    model_dir = root / ".models" / "gigastt"
+    required = [
+        ("encoder", ["v3_rnnt_encoder.onnx", "v3_rnnt_encoder_int8.onnx"]),
+        ("decoder", ["v3_rnnt_decoder.onnx"]),
+        ("joint", ["v3_rnnt_joint.onnx"]),
+        ("vocab", ["v3_vocab.txt"]),
+        ("punct", ["punct/rupunct_small_int8.onnx", "punct/config.json", "punct/tokenizer.json"]),
+    ]
+    missing: list[str] = []
+    if not gigastt_bin.exists() or not os.access(gigastt_bin, os.X_OK):
+        missing.append("tools/bin/gigastt")
+    for label, alternatives in required:
+        if not any((model_dir / name).exists() for name in alternatives):
+            missing.append(label)
+    if missing:
+        return {
+            "class": "failed",
+            "label": "GigaSTT не настроен",
+            "detail": "запустите настройку перед обработкой",
+            "title": "Не найдено: " + ", ".join(missing),
+        }
+    return {
+        "class": "done",
+        "label": "GigaSTT готов",
+        "detail": "GigaAM v3 найден локально",
+        "title": "tools/bin/gigastt и файлы .models/gigastt доступны на этом Mac",
+    }
 
 
 def _relative_display(root: Path, path: Path) -> str:
