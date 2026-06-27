@@ -1,6 +1,12 @@
 # Task Board
 
-Дата: 2026-06-26.
+Дата: 2026-06-27.
+
+Назначение: active claims, delivery journal, blockers and handoffs.
+
+Источник правды для приоритетов и acceptance criteria: `.agents/product-backlog.md`.
+
+Правило: перед кодовой работой агент должен claim'ить один task ID из `.agents/product-backlog.md` в секции `Active Claims`.
 
 ## Current Product Focus
 
@@ -18,26 +24,39 @@ Definition of "normal local product":
 ## Active Branches
 
 - `main` - baseline.
-- `codex/upload-files-queue` - upload UI and project coordination changes.
+- `codex/ux-f1-f2` - current local work branch with UX/productization commits.
 
-## Active Work
+## Active Claims
 
-### Codex
+No active claim after the 2026-06-27 backlog refresh.
+
+Next agent should pick exactly one `READY` task from `.agents/product-backlog.md`, add a claim here, and then edit files.
+
+Claim template:
+
+```md
+### <Agent> - <TASK-ID> <short title>
+
+Status: CLAIMED (YYYY-MM-DD).
 
 Scope:
 
-- `app/scripts/doctor_local_mac.sh`
-- `app/scripts/setup_local_mac.sh`
-- `app/scripts/start_server.sh`
-- `Проверить Voice Recognizer.command`
-- minimal README/task-board updates for this doctor task
+- `path`
 
 Goal:
 
-- реализовать read-only doctor для локальной установки;
-- ничего не устанавливать, не скачивать и не менять в пользовательских файлах;
-- дать понятный отчет по Python, ffmpeg, моделям, `.env`, pyannote и портам.
-- привести setup/start к единому дефолту `Inbox` с fallback на старый `inbox`.
+- concrete outcome
+
+Acceptance:
+
+- copied from `.agents/product-backlog.md`, narrowed if needed
+
+Notes:
+
+- risks/blockers
+```
+
+## Delivery Journal
 
 ### Claude Code
 
@@ -636,52 +655,52 @@ Checks:
 - `outputs/pipeline` backfill updated existing `Модуль 3, день 2` and `Носников` manifests without launching ASR/diarization;
 - in-app Browser on `http://127.0.0.1:8790/`: refreshed `Модуль 3, день 2` overview shows `Качество спикеров: проверить · коротких 19.6% · смен 2.5/мин · островков 42`, console clean.
 
+### Implementation Product Backlog Refresh
+
+Status: DELIVERED (2026-06-27), Codex. Recenter project planning on the unfinished local-product critical path.
+
+Scope:
+
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+- `.agents/README.md`
+- `AGENTS.md`
+- `docs/implementation-plan.md`
+- `docs/local-mac-product-plan.md`
+
+Goal:
+
+- separate delivery journal from prioritized product backlog;
+- identify major unfinished work from prior dialogs;
+- create task IDs, statuses, scope and acceptance criteria for future agents;
+- make task claim/update rules mandatory for Codex, Claude Code and review agents.
+
+Checks:
+
+- documentation-only change;
+- verify no app code changed;
+- `git diff --check`;
+- secret scan on staged diff.
+
 ## Next Implementation Tasks
 
-UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
+Use `.agents/product-backlog.md`.
 
-0. WhisperLiveKit research gate:
-   - read `docs/external-projects.md` section `QuentinFuxa/WhisperLiveKit`;
-   - decide whether to borrow model manager, doctor, benchmark, optional backend profile ideas;
-   - do not add live WebSocket, Docker, translation, chrome extension, or multi-user features to the local Mac product yet;
-   - write findings to `.agents/whisperlivekit-research.md` before implementing setup/engine registry changes.
+Current P0 order:
 
-1. Local setup doctor:
-   - detect Python version;
-   - detect ffmpeg/ffprobe;
-   - detect `.venv`;
-   - detect GigaSTT binary and model files;
-   - detect HF token presence without printing it;
-   - show clear next actions.
-   - status: read-only doctor script exists and passes local smoke check.
+1. `P0-001 Mac Install Acceptance`
+2. `P0-002 Durable Job Queue`
+3. `P0-003 Long-File Resume And Progress`
+4. `P0-004 Batch Reliability`
+5. `P0-005 Engine Registry And Model Profiles`
+6. `P0-006 Speaker Quality Improvement Loop`
+7. `P0-007 Local Smoke Suite`
 
-2. Local setup launcher:
-   - double-clickable setup `.command`;
-   - creates `.venv`;
-   - installs dependencies;
-   - runs model setup or explains manual model download;
-   - ends with "Start Voice Recognizer".
-   - status: first launcher exists as `Настроить Voice Recognizer.command`.
-
-3. UI upload completion:
-   - keep uploaded file selected;
-   - add duration metadata once probing is fast enough;
-   - support checked subset batch mode.
-
-4. Long task UX:
-   - stage labels;
-   - elapsed time;
-   - last successful artifact;
-   - retry/resume language.
-
-5. Speaker workflow:
-   - robust sample playback;
-   - stable name inputs during polling;
-   - per-file speaker count and speaker names.
+The old Claude UX implementation list is completed enough for the current product stage and remains available as historical context in `.agents/next-task-ux-implementation.md`, `docs/ux-audit.md`, and `docs/ux-acceptance-scenarios.md`.
 
 ## Coordination Rules
 
-- Claim one task and one write scope before editing.
+- Claim one task ID from `.agents/product-backlog.md` and one write scope before editing.
 - Do not edit files listed under another active owner.
 - Commit small, thematic changes.
 - Review before merging to `main`.

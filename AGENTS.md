@@ -1,6 +1,6 @@
 # Voice Recognizer Agent Guide
 
-Дата: 2026-06-26.
+Дата: 2026-06-27.
 
 Этот файл обязателен для Codex, Claude Code и любых других AI-агентов, работающих в этом репозитории.
 
@@ -63,6 +63,32 @@ git diff --cached | rg --pcre2 -n "hf_(?!your_token_here)[A-Za-z0-9]{12,}|sk-[A-
 
 Если агент не уверен, что его задача конфликтует с другой, он должен остановиться и записать вопрос в `.agents/task-board.md`, а не переписывать соседний код.
 
+## Task accounting workflow
+
+Источник правды по следующим задачам: `.agents/product-backlog.md`.
+
+`.agents/task-board.md` используется как:
+
+- журнал доставленных delivery-блоков;
+- место для активного claim;
+- место для вопросов/блокеров между агентами.
+
+Перед любой нетривиальной работой агент обязан:
+
+1. Прочитать `.agents/product-backlog.md` и `.agents/task-board.md`.
+2. Выбрать один task ID из backlog, например `P0-002 Durable Job Queue`.
+3. Добавить или обновить active claim в `.agents/task-board.md`: агент, task ID, scope, файлы, acceptance, время.
+4. Работать только в заявленном scope. Если нужен новый scope, сначала обновить claim.
+5. В конце добавить delivery block в `.agents/task-board.md`: что сделано, какие файлы, какие проверки, что не проверено, риски.
+6. Если задача завершена, обновить статус в `.agents/product-backlog.md` или явно записать, почему осталась `READY/BLOCKED`.
+
+Запрещено:
+
+- брать "мелкую удобную" задачу, если она не двигает текущий P0 backlog или пользователь явно не попросил;
+- оставлять claim в состоянии active после коммита;
+- смешивать разные P0 задачи в одном diff без необходимости;
+- делать крупный кодовый refactor под видом task accounting.
+
 ## Роли
 
 ### Implementation agent
@@ -79,12 +105,17 @@ git diff --cached | rg --pcre2 -n "hf_(?!your_token_here)[A-Za-z0-9]{12,}|sk-[A-
 
 ## Приоритеты ближайших задач
 
-1. Mac local installer/setup для обычного пользователя.
-2. Надежный запуск/остановка и диагностика окружения.
-3. File upload + Inbox + batch UX.
-4. Длинные файлы: ASR chunking, resume, понятные progress stages.
-5. Выбор движков и локальных моделей.
-6. Speaker labeling и качество диаризации.
+Актуальный порядок находится в `.agents/product-backlog.md`.
+
+Текущий P0 порядок:
+
+1. `P0-001 Mac Install Acceptance`.
+2. `P0-002 Durable Job Queue`.
+3. `P0-003 Long-File Resume And Progress`.
+4. `P0-004 Batch Reliability`.
+5. `P0-005 Engine Registry And Model Profiles`.
+6. `P0-006 Speaker Quality Improvement Loop`.
+7. `P0-007 Local Smoke Suite`.
 
 Self-host/Docker/Cloud отложены до отдельного будущего этапа.
 

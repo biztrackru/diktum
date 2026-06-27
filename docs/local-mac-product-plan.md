@@ -1,6 +1,6 @@
 # Local Mac Product Plan
 
-Дата: 2026-06-26.
+Дата: 2026-06-27.
 
 ## Цель
 
@@ -143,13 +143,22 @@ VoiceRecognizerLocal/
 
 Идем по варианту A, затем B.
 
-Первый implementation scope:
+Текущий статус:
 
 - добавить `app/scripts/setup_local_mac.sh`; готово;
 - добавить `Настроить Voice Recognizer.command`; готово;
-- добавить команду/скрипт `doctor`;
-- сделать человекочитаемый отчет окружения;
-- развивать текущую структуру `app/` без смешивания кода приложения и локальных пользовательских данных.
+- добавить команду/скрипт `doctor`; готово;
+- сделать человекочитаемый отчет окружения; готово на уровне скрипта, требуется clean Mac acceptance;
+- развивать текущую структуру `app/` без смешивания кода приложения и локальных пользовательских данных; готово как dev/product hybrid.
+
+Следующий implementation scope: `P0-001 Mac Install Acceptance` из `.agents/product-backlog.md`.
+
+Не закрыто:
+
+- прогон setup/doctor/start/stop на чистом или почти чистом пользовательском Mac;
+- проверка сценария без ручного Terminal;
+- решение, оставляем ли dev-folder layout для первых пользователей или переходим к `VoiceRecognizerLocal/app + user-data`;
+- короткая инструкция "что делать, если модель/токен/ffmpeg не настроены" прямо в setup/doctor output и README.
 
 ## Acceptance Criteria
 
