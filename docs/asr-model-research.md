@@ -64,9 +64,10 @@
 - `app/src/voice_recognizer/gigastt.py` теперь явно вызывает GigaSTT с `--punctuation on --itn auto`;
 - при `load_result()` пунктуация/регистр из `text` переносятся на timestamped `words[]`, поэтому clean/timeline/Markdown сегменты сохраняют таймкоды и спикеров, но становятся читаемее;
 - `app/config/speaker-counts.json` больше не зажимает обучающие записи в `max_speakers=8`, а спорный `Носников` больше не фиксируется как `num_speakers=2`;
+- `app/config/hotwords.txt` автоматически передается в GigaSTT как `--hotwords-file`, если файл существует; built-in `--hotwords-default` оставлен ручным;
 - `docs/asr-benchmark/score.py` починен для `--terms "..."`.
 
-Осталось как отдельные шаги: GigaAM v3 e2e/Whisper comparison, восстановление `ё`, доменный глоссарий/hotwords и честный перепрогон длинных файлов с новыми speaker limits.
+Осталось как отдельные шаги: GigaAM v3 e2e/Whisper comparison, восстановление `ё`, расширение доменного глоссария и честный перепрогон длинных файлов с новыми speaker limits.
 
 ## Протокол тестов на Mac (то, что не запустить из песочницы)
 

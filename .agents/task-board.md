@@ -458,6 +458,32 @@ Checks:
 - `PYTHONPATH=app/src` smoke: segment exports inherit punctuation/casing from a punctuated GigaSTT JSON;
 - `docs/asr-benchmark/score.py` works with `--terms` before or after file arguments.
 
+### Implementation Claude Audit Closure
+
+Status: DELIVERED (2026-06-27), Codex. Turn Claude audit recommendations into explicit project status and glossary support.
+
+Scope:
+
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/gigastt.py`
+- `app/config/hotwords.txt`
+- `docs/claude-audit-closure.md`
+- `docs/asr-model-research.md`
+- this `### Implementation Claude Audit Closure` block in `.agents/task-board.md`
+
+Goal:
+
+- answer whether all Claude findings/recommendations are found and closed;
+- add optional GigaSTT hotwords support through `app/config/hotwords.txt`;
+- document which quality recommendations are closed, partial, ready-for-heavy-run, or deferred.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- CLI help exposes `--hotwords-file` and `--hotwords-default`;
+- smoke run confirms `app/config/hotwords.txt` is resolved and passed to GigaSTT;
+- closure document lists UX F1-F16 as closed and quality/ASR residual work explicitly.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

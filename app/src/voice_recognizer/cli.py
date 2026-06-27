@@ -81,17 +81,25 @@ def _run_gigastt_to_outputs(
     model_dir: Path,
     punct_model_dir: Path,
     gigastt_bin: Path,
+    hotwords_file: Path | None = None,
+    hotwords_default: bool = False,
     diarization_json: Path | None = None,
     max_gap_seconds: float = 1.8,
 ) -> tuple[Path, Path, float, float, int, int]:
     output_json = output_dir / f"{stem}.gigastt.json"
     output_markdown = output_dir / f"{stem}.transcript.md"
+    if hotwords_file is not None:
+        console.print(f"[cyan]ASR hotwords:[/cyan] {hotwords_file}")
+    if hotwords_default:
+        console.print("[cyan]ASR hotwords:[/cyan] built-in default lexicon enabled")
     engine_seconds = run_gigastt(
         gigastt_bin=gigastt_bin,
         source=recognition_source,
         output_json=output_json,
         model_dir=model_dir,
         punct_model_dir=punct_model_dir,
+        hotwords_file=hotwords_file,
+        hotwords_default=hotwords_default,
     )
     result = load_result(output_json)
     if diarization_json is not None:
@@ -138,6 +146,23 @@ def _resolve_speaker_config_path(path: Path | None) -> Path | None:
         Path("config/speaker-counts.json"),
         Path("app/config/speaker-counts.json"),
         app_dir / "config" / "speaker-counts.json",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _resolve_hotwords_path(path: Path | None) -> Path | None:
+    if path is not None:
+        if not path.exists():
+            raise typer.BadParameter(f"hotwords file not found: {path}")
+        return path
+    app_dir = Path(__file__).resolve().parents[2]
+    candidates = (
+        Path("app/config/hotwords.txt"),
+        Path("config/hotwords.txt"),
+        app_dir / "config" / "hotwords.txt",
     )
     for candidate in candidates:
         if candidate.exists():
@@ -277,6 +302,8 @@ def _run_asr_to_json(
     gigastt_bin: Path,
     model_dir: Path,
     punct_model_dir: Path,
+    hotwords_file: Path | None,
+    hotwords_default: bool,
     chunk_seconds: float,
     skip_existing: bool,
 ) -> float:
@@ -288,6 +315,8 @@ def _run_asr_to_json(
             output_json=asr_json,
             model_dir=model_dir,
             punct_model_dir=punct_model_dir,
+            hotwords_file=hotwords_file,
+            hotwords_default=hotwords_default,
         )
 
     safe_chunk_seconds = min(chunk_seconds, GIGASTT_SAFE_SINGLE_FILE_SECONDS)
@@ -323,6 +352,8 @@ def _run_asr_to_json(
                 output_json=chunk.json_path,
                 model_dir=model_dir,
                 punct_model_dir=punct_model_dir,
+                hotwords_file=hotwords_file,
+                hotwords_default=hotwords_default,
             )
         chunk_result = load_result(chunk.json_path)
         if chunk_result.text:
@@ -476,6 +507,8 @@ def _write_manifest(
     speaker_count: int,
     asr_engine: str,
     device: str,
+    hotwords_file: Path | None,
+    hotwords_default: bool,
     start: float | None,
     clip_duration: float | None,
     num_speakers: int | None,
@@ -508,6 +541,8 @@ def _write_manifest(
         "speaker_count": speaker_count,
         "asr_engine": asr_engine,
         "device": device,
+        "asr_hotwords_file": str(hotwords_file) if hotwords_file is not None else None,
+        "asr_hotwords_default": hotwords_default,
         "speaker_constraints": {
             "num_speakers": num_speakers,
             "min_speakers": min_speakers,
@@ -531,6 +566,8 @@ def _run_pipeline_to_outputs(
     model_dir: Path,
     punct_model_dir: Path,
     gigastt_bin: Path,
+    hotwords_file: Path | None,
+    hotwords_default: bool,
     asr_engine: str,
     pyannote_model_id: str,
     hf_token: str,
@@ -558,6 +595,10 @@ def _run_pipeline_to_outputs(
     diarization_json = output_dir / f"{stem}.pyannote.json"
     manifest_json = output_dir / f"{stem}.manifest.json"
     speaker_names = speaker_names or {}
+    if hotwords_file is not None:
+        console.print(f"[cyan]ASR hotwords:[/cyan] {hotwords_file}")
+    if hotwords_default:
+        console.print("[cyan]ASR hotwords:[/cyan] built-in default lexicon enabled")
 
     if skip_existing and audio_path.exists():
         console.print(f"[yellow]Using prepared audio:[/yellow] {audio_path}")
@@ -579,6 +620,8 @@ def _run_pipeline_to_outputs(
             gigastt_bin=gigastt_bin,
             model_dir=model_dir,
             punct_model_dir=punct_model_dir,
+            hotwords_file=hotwords_file,
+            hotwords_default=hotwords_default,
             chunk_seconds=asr_chunk_seconds,
             skip_existing=skip_existing,
         )
@@ -647,6 +690,8 @@ def _run_pipeline_to_outputs(
         speaker_count=speaker_count,
         asr_engine=asr_engine,
         device=device,
+        hotwords_file=hotwords_file,
+        hotwords_default=hotwords_default,
         start=start,
         clip_duration=duration,
         num_speakers=num_speakers,
@@ -744,6 +789,8 @@ def transcribe_gigastt(
     model_dir: Path = typer.Option(Path(".models/gigastt"), "--model-dir"),
     punct_model_dir: Path = typer.Option(Path(".models/gigastt/punct"), "--punct-model-dir"),
     gigastt_bin: Path = typer.Option(Path("tools/bin/gigastt"), "--gigastt-bin"),
+    hotwords_file: Path | None = typer.Option(None, "--hotwords-file"),
+    hotwords_default: bool = typer.Option(False, "--hotwords-default"),
     start: float | None = typer.Option(None, "--start", help="Start offset in seconds."),
     duration: float | None = typer.Option(None, "--duration", help="Clip duration in seconds."),
     diarization_json: Path | None = typer.Option(None, "--diarization-json", exists=True, readable=True),
@@ -764,6 +811,7 @@ def transcribe_gigastt(
         console.print(f"[green]Prepared clip:[/green] {recognition_source}")
 
     output_json = output_dir / f"{stem}.gigastt.json"
+    resolved_hotwords = _resolve_hotwords_path(hotwords_file)
     try:
         output_json, output_markdown, result_duration, engine_seconds, _, _ = _run_gigastt_to_outputs(
             source=source,
@@ -773,6 +821,8 @@ def transcribe_gigastt(
             model_dir=model_dir,
             punct_model_dir=punct_model_dir,
             gigastt_bin=gigastt_bin,
+            hotwords_file=resolved_hotwords,
+            hotwords_default=hotwords_default,
             diarization_json=diarization_json,
             max_gap_seconds=max_gap_seconds,
         )
@@ -793,6 +843,8 @@ def batch_gigastt(
     model_dir: Path = typer.Option(Path(".models/gigastt"), "--model-dir"),
     punct_model_dir: Path = typer.Option(Path(".models/gigastt/punct"), "--punct-model-dir"),
     gigastt_bin: Path = typer.Option(Path("tools/bin/gigastt"), "--gigastt-bin"),
+    hotwords_file: Path | None = typer.Option(None, "--hotwords-file"),
+    hotwords_default: bool = typer.Option(False, "--hotwords-default"),
     recursive: bool = typer.Option(False, "--recursive", "-r"),
     max_gap_seconds: float = typer.Option(1.8, "--max-gap", help="Pause that starts a new segment."),
     skip_existing: bool = typer.Option(True, "--skip-existing/--overwrite"),
@@ -804,6 +856,7 @@ def batch_gigastt(
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    resolved_hotwords = _resolve_hotwords_path(hotwords_file)
     rows: list[tuple[Path, Path, Path, float, float, int, int, str]] = []
     for index, source in enumerate(files, start=1):
         stem = safe_stem(source)
@@ -825,6 +878,8 @@ def batch_gigastt(
                 model_dir=model_dir,
                 punct_model_dir=punct_model_dir,
                 gigastt_bin=gigastt_bin,
+                hotwords_file=resolved_hotwords,
+                hotwords_default=hotwords_default,
                 max_gap_seconds=max_gap_seconds,
             )
         except (GigasttError, subprocess.CalledProcessError) as error:
@@ -848,6 +903,8 @@ def process_file(
     model_dir: Path = typer.Option(Path(".models/gigastt"), "--model-dir"),
     punct_model_dir: Path = typer.Option(Path(".models/gigastt/punct"), "--punct-model-dir"),
     gigastt_bin: Path = typer.Option(Path("tools/bin/gigastt"), "--gigastt-bin"),
+    hotwords_file: Path | None = typer.Option(None, "--hotwords-file"),
+    hotwords_default: bool = typer.Option(False, "--hotwords-default"),
     asr_engine: str = typer.Option(
         DEFAULT_ASR_ENGINE,
         "--asr-engine",
@@ -884,6 +941,7 @@ def process_file(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     speaker_config = _load_speaker_config(speaker_config_path)
+    resolved_hotwords = _resolve_hotwords_path(hotwords_file)
     resolved_num, resolved_min, resolved_max = _speaker_settings_for_source(
         source,
         speaker_config,
@@ -904,6 +962,8 @@ def process_file(
             model_dir=model_dir,
             punct_model_dir=punct_model_dir,
             gigastt_bin=gigastt_bin,
+            hotwords_file=resolved_hotwords,
+            hotwords_default=hotwords_default,
             asr_engine=resolved_asr_engine,
             pyannote_model_id=pyannote_model_id,
             hf_token=resolve_hf_token(hf_token_env),
@@ -940,6 +1000,8 @@ def batch_process(
     model_dir: Path = typer.Option(Path(".models/gigastt"), "--model-dir"),
     punct_model_dir: Path = typer.Option(Path(".models/gigastt/punct"), "--punct-model-dir"),
     gigastt_bin: Path = typer.Option(Path("tools/bin/gigastt"), "--gigastt-bin"),
+    hotwords_file: Path | None = typer.Option(None, "--hotwords-file"),
+    hotwords_default: bool = typer.Option(False, "--hotwords-default"),
     asr_engine: str = typer.Option(
         DEFAULT_ASR_ENGINE,
         "--asr-engine",
@@ -974,6 +1036,7 @@ def batch_process(
         return
 
     speaker_config = _load_speaker_config(speaker_config_path)
+    resolved_hotwords = _resolve_hotwords_path(hotwords_file)
     try:
         hf_token = resolve_hf_token(hf_token_env)
     except DiarizationError as error:
@@ -996,6 +1059,8 @@ def batch_process(
                 model_dir=model_dir,
                 punct_model_dir=punct_model_dir,
                 gigastt_bin=gigastt_bin,
+                hotwords_file=resolved_hotwords,
+                hotwords_default=hotwords_default,
                 asr_engine=resolved_asr_engine,
                 pyannote_model_id=pyannote_model_id,
                 hf_token=hf_token,

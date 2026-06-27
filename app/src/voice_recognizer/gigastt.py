@@ -70,6 +70,8 @@ def run_gigastt(
     output_json: Path,
     model_dir: Path,
     punct_model_dir: Path,
+    hotwords_file: Path | None = None,
+    hotwords_default: bool = False,
     log_level: str = "error",
 ) -> float:
     if not gigastt_bin.exists():
@@ -92,12 +94,20 @@ def run_gigastt(
         "on",
         "--itn",
         "auto",
+    ]
+    if hotwords_file is not None:
+        if not hotwords_file.exists():
+            raise GigasttError(f"hotwords file not found: {hotwords_file}")
+        command.extend(["--hotwords-file", str(hotwords_file)])
+    if hotwords_default:
+        command.append("--hotwords-default")
+    command.extend([
         "--format",
         "json",
         "--output",
         str(output_json),
         str(source),
-    ]
+    ])
     started = time.perf_counter()
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
