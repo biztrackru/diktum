@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,7 @@ MAX_LOG_LINES = 500
 SOURCE_FRESHNESS_TOLERANCE_SECONDS = 2.0
 JOBS: dict[str, "Job"] = {}
 JOB_QUEUE: list[str] = []
+RUNNING_PROCESSES: dict[str, subprocess.Popen[str]] = {}
 JOBS_LOCK = threading.Lock()
 WORKER_THREAD: threading.Thread | None = None
 MEDIA_METADATA_CACHE: dict[tuple[str, int, int], dict[str, object]] = {}
@@ -62,6 +64,8 @@ class Job:
     returncode: int | None = None
     completed_at: float | None = None
     log: list[str] = field(default_factory=list)
+    cancel_requested: bool = False
+    process_pid: int | None = None
 
 
 def run_web_server(
@@ -149,6 +153,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             self._send_json({"files": files}, status=HTTPStatus.CREATED)
             return
 
+        if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/cancel"):
+            job_id = parsed.path.removeprefix("/api/jobs/").removesuffix("/cancel").strip("/")
+            try:
+                job = _cancel_job(job_id)
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(_job_payload(job, self.web_config.root))
+            return
+
         if parsed.path.startswith("/api/results/") and parsed.path.endswith("/speaker-names"):
             result_id = parsed.path.removeprefix("/api/results/").removesuffix("/speaker-names").strip("/")
             try:
@@ -224,6 +238,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             JOBS[job.id] = job
         _enqueue_job(job.id, self.web_config.root)
         self._send_json(_job_payload(job, self.web_config.root), status=HTTPStatus.CREATED)
+
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/jobs/"):
+            job_id = parsed.path.removeprefix("/api/jobs/").split("/", 1)[0].strip("/")
+            try:
+                _delete_job(job_id)
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"deleted": True, "id": job_id})
+            return
+        self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 
     def _render_index(self) -> str:
         files = iter_media_files(self.web_config.inbox)
@@ -677,6 +704,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .btn.ghost {{
       background: #fff;
     }}
+    .btn.danger {{
+      border-color: rgba(180, 35, 24, 0.28);
+      background: rgba(180, 35, 24, 0.08);
+      color: var(--danger);
+    }}
+    .btn.small {{
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+    }}
     .btn.full {{
       flex: 1 1 160px;
     }}
@@ -874,6 +911,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .badge.running {{ background: rgba(11, 127, 114, 0.12); color: var(--running); }}
     .badge.failed {{ background: rgba(180, 35, 24, 0.1); color: var(--danger); }}
     .badge.done {{ background: rgba(182, 106, 32, 0.13); color: var(--done); }}
+    .badge.canceling {{ background: rgba(11, 127, 114, 0.12); color: var(--running); }}
+    .badge.canceled {{ background: rgba(180, 35, 24, 0.08); color: var(--danger); }}
     .job-main {{
       min-width: 0;
       display: grid;
@@ -959,6 +998,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+    }}
+    .job-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-left: auto;
     }}
     .result-tabs {{
       display: grid;
@@ -2138,9 +2183,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         acc[job.status] = (acc[job.status] || 0) + 1;
         return acc;
       }}, {{}});
+      const activeCount = (counts.running || 0) + (counts.canceling || 0);
       jobCount.textContent = `${{jobs.length}} всего`;
       queuedCount.textContent = `${{counts.queued || 0}} ожидает`;
-      runningCount.textContent = `${{counts.running || 0}} выполняется`;
+      runningCount.textContent = `${{activeCount}} выполняется`;
       doneCount.textContent = `${{counts.done || 0}} готово`;
     }}
 
@@ -2219,8 +2265,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       renderedResultKey = key;
       if (!job.is_disk_result && job.status !== "done") {{
         resultDetails.innerHTML = `
-          <div class="result-meta">${{jobBadges(job)}}</div>
+          <div class="result-meta">${{jobBadges(job)}}${{renderJobManagementActions(job)}}</div>
           ${{renderPendingOrFailedJob(job)}}`;
+        wireJobManagementActions(job);
         restoreSpeakerFocus(focusState);
         return;
       }}
@@ -2240,7 +2287,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
       </div>`;
       resultDetails.innerHTML = `
-        <div class="result-meta">${{jobBadges(job)}}${{renderRerunAction(job)}}</div>
+        <div class="result-meta">${{jobBadges(job)}}${{renderRerunAction(job)}}${{renderJobManagementActions(job)}}</div>
         ${{renderResultTabs(activeTab)}}
         <section class="result-panel" data-result-panel="overview" ${{activeTab === "overview" ? "" : "hidden"}}>
           ${{renderResultOverview(job, files, samples)}}
@@ -2261,6 +2308,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       wireTranscriptControls(job, files);
       loadTranscriptPreview(job, files);
       wireRerunAction(job);
+      wireJobManagementActions(job);
       const applyButton = document.querySelector("#apply-speaker-names");
       if (applyButton) {{
         applyButton.addEventListener("click", async () => {{
@@ -2317,6 +2365,68 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function renderRerunAction(job) {{
       if (!job.is_disk_result || sourceFreshnessStatus(job) !== "changed") return "";
       return `<button class="btn primary" id="rerun-result" type="button" title="Пересчитать этот результат в ту же папку">Обновить результат</button>`;
+    }}
+
+    function renderJobManagementActions(job) {{
+      if (job.is_disk_result) return "";
+      if (job.status === "queued") {{
+        return `<div class="job-actions"><button class="btn danger small" type="button" data-job-action="cancel" data-job-id="${{escapeAttribute(job.id)}}">Снять с очереди</button></div>`;
+      }}
+      if (job.status === "running") {{
+        return `<div class="job-actions"><button class="btn danger small" type="button" data-job-action="cancel" data-job-id="${{escapeAttribute(job.id)}}">Остановить</button></div>`;
+      }}
+      if (job.status === "canceling") {{
+        return `<div class="job-actions"><button class="btn danger small" type="button" disabled>Останавливается</button></div>`;
+      }}
+      if (["done", "failed", "canceled"].includes(job.status)) {{
+        return `<div class="job-actions"><button class="btn ghost small" type="button" data-job-action="delete" data-job-id="${{escapeAttribute(job.id)}}">Убрать из списка</button></div>`;
+      }}
+      return "";
+    }}
+
+    function wireJobManagementActions(job) {{
+      document.querySelectorAll("[data-job-action][data-job-id]").forEach((button) => {{
+        button.addEventListener("click", async () => {{
+          button.disabled = true;
+          const action = button.dataset.jobAction;
+          const jobId = button.dataset.jobId;
+          try {{
+            if (action === "cancel") {{
+              await cancelJob(jobId);
+            }} else if (action === "delete") {{
+              await deleteJob(jobId);
+            }}
+          }} catch (error) {{
+            logNode.textContent = String(error);
+            button.disabled = false;
+          }}
+        }});
+      }});
+    }}
+
+    async function cancelJob(jobId) {{
+      const response = await fetch(`/api/jobs/${{jobId}}/cancel`, {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        body: JSON.stringify({{}}),
+      }});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "cancel failed");
+      activeView = "job";
+      activeJobId = payload.id;
+      activeResultId = null;
+      renderedResultKey = null;
+      setLogText((payload.log || []).join(""), {{ forceBottom: true }});
+      await loadJobs();
+    }}
+
+    async function deleteJob(jobId) {{
+      const response = await fetch(`/api/jobs/${{jobId}}`, {{ method: "DELETE" }});
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "delete failed");
+      if (activeJobId === jobId) activeJobId = null;
+      renderedResultKey = null;
+      await loadJobs();
     }}
 
     function wireRerunAction(job) {{
@@ -2529,6 +2639,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (job.status === "running") {{
         return `${{currentStage(job).label}} · ${{formatDuration(elapsedSeconds(job))}} · ${{job.device || "auto"}}`;
       }}
+      if (job.status === "canceling") {{
+        return `останавливается · ${{formatDuration(elapsedSeconds(job))}} · ${{job.device || "auto"}}`;
+      }}
+      if (job.status === "canceled") {{
+        return `отменено · ${{formatDuration(elapsedSeconds(job))}} · ${{job.device || "auto"}}`;
+      }}
       if (job.status === "queued") {{
         return `ожидает · ${{formatDuration(elapsedSeconds(job))}} · ${{job.device || "auto"}}`;
       }}
@@ -2682,6 +2798,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (job.status === "failed") {{
         return renderDiagnosticBlock(diagnoseProblem(jobLogText(job), {{ job }}));
       }}
+      if (job.status === "canceled") {{
+        return `<div class="progress-block" aria-live="polite">
+          <div class="stage-top">
+            <span class="badge canceled">Отменено</span>
+            <span class="badge">${{escapeHtml(formatDuration(elapsedSeconds(job)))}}</span>
+          </div>
+          <p>Задача остановлена пользователем. Уже созданные промежуточные файлы могут остаться в cache/outputs, но новая обработка проверит их по metadata.</p>
+          <div class="heartbeat">Последний сигнал: ${{escapeHtml(lastMeaningfulLog(job))}}</div>
+        </div>`;
+      }}
+      if (job.status === "canceling") {{
+        return renderProgressBlock(job, "Останавливаю дочерний процесс. Это может занять несколько секунд, если ASR/diarization завершает текущую операцию.");
+      }}
       if (job.status === "running") {{
         return renderProgressBlock(job, "Задача выполняется. Результаты и спикеры появятся здесь после завершения.");
       }}
@@ -2720,6 +2849,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function currentStageIndex(job) {{
       if (job.status === "done") return pipelineStages.length - 1;
+      if (job.status === "canceled") return 0;
       const text = meaningfulLogLines(job).join("\\n").toLowerCase();
       if (/manifest:|clean txt:|clean markdown:|markdown:|done:|export/.test(text)) return 4;
       if (/diarization json:|speaker sample|speaker names|склейк|merge|align|format/.test(text)) return 3;
@@ -2926,6 +3056,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (status === "partial") return "running";
       if (status === "failed") return "failed";
       if (status === "running") return "running";
+      if (status === "canceling") return "canceling";
+      if (status === "canceled") return "canceled";
       return "queued";
     }}
 
@@ -2934,6 +3066,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (status === "partial") return "Частично";
       if (status === "failed") return "Ошибка";
       if (status === "running") return "Выполняется";
+      if (status === "canceling") return "Остановка";
+      if (status === "canceled") return "Отменено";
       return "Ожидает";
     }}
 
@@ -3141,7 +3275,14 @@ def _create_job(
 
 def _run_job(job_id: str, root: Path) -> None:
     with JOBS_LOCK:
-        job = JOBS[job_id]
+        job = JOBS.get(job_id)
+        if job is None:
+            return
+        if job.cancel_requested:
+            job.status = "canceled"
+            job.completed_at = time.time()
+            job.log.append("Canceled before start\n")
+            return
         job.status = "running"
 
     env = os.environ.copy()
@@ -3157,18 +3298,88 @@ def _run_job(job_id: str, root: Path) -> None:
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        start_new_session=True,
     )
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            _terminate_process(process)
+            return
+        job.process_pid = process.pid
+        RUNNING_PROCESSES[job_id] = process
+        cancel_now = job.cancel_requested
+    if cancel_now:
+        _terminate_process(process)
     assert process.stdout is not None
     for line in process.stdout:
         _append_job_log(job_id, line)
     returncode = process.wait()
     with JOBS_LOCK:
-        job = JOBS[job_id]
+        RUNNING_PROCESSES.pop(job_id, None)
+        job = JOBS.get(job_id)
+        if job is None:
+            return
+        job.process_pid = None
         job.returncode = returncode
         job.completed_at = time.time()
-        job.status = "done" if returncode == 0 else "failed"
-        if returncode != 0:
+        if job.cancel_requested:
+            job.status = "canceled"
+            job.log.append("Process canceled by user\n")
+        else:
+            job.status = "done" if returncode == 0 else "failed"
+        if returncode != 0 and job.status != "canceled":
             job.log.append(f"Process exited with code {returncode}\n")
+
+
+def _cancel_job(job_id: str) -> Job:
+    process: subprocess.Popen[str] | None = None
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            raise ValueError("job not found")
+        if job.status == "queued":
+            if job_id in JOB_QUEUE:
+                JOB_QUEUE.remove(job_id)
+            job.cancel_requested = True
+            job.status = "canceled"
+            job.completed_at = time.time()
+            job.log.append("Canceled before start\n")
+            return job
+        if job.status in {"running", "canceling"}:
+            if not job.cancel_requested:
+                job.log.append("Cancellation requested by user\n")
+            job.cancel_requested = True
+            job.status = "canceling"
+            process = RUNNING_PROCESSES.get(job_id)
+        else:
+            return job
+    if process is not None:
+        _terminate_process(process)
+    return job
+
+
+def _delete_job(job_id: str) -> None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            raise ValueError("job not found")
+        if job.status in {"running", "canceling"}:
+            raise ValueError("stop running job before removing it")
+        if job_id in JOB_QUEUE:
+            JOB_QUEUE.remove(job_id)
+        JOBS.pop(job_id, None)
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except OSError:
+        try:
+            process.terminate()
+        except OSError:
+            return
 
 
 def _enqueue_job(job_id: str, root: Path) -> None:
@@ -3349,6 +3560,8 @@ def _job_payload(job: Job, root: Path) -> dict[str, object]:
         "created_at": job.created_at,
         "completed_at": job.completed_at,
         "log": job.log,
+        "cancel_requested": job.cancel_requested,
+        "process_pid": job.process_pid,
         "asr_engine": job.asr_engine,
         "asr_quality": _manifest_asr_quality(manifest),
         "device": job.device,

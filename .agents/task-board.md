@@ -561,6 +561,30 @@ Checks:
 - manifest smoke includes `asr_quality.status=ok` for the refreshed long results;
 - UI payload exposes `asr_quality` for disk results.
 
+### Implementation Queue Cancellation
+
+Status: DELIVERED (2026-06-27), Codex. Add safe stop/remove controls for accidental long jobs.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Queue Cancellation` block in `.agents/task-board.md`
+
+Goal:
+
+- allow queued jobs to be removed before they start;
+- allow running jobs to request cancellation and terminate the child process group;
+- keep canceled jobs visible with explicit `canceled` status until the user removes them;
+- allow completed/failed/canceled jobs to be removed from the in-memory job list without deleting output files.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- running-cancel API smoke: `running -> canceling -> canceled`, child return code `-15`;
+- queued-cancel API smoke: `queued -> canceled` before start;
+- delete API smoke removes done/canceled jobs from `/api/jobs`;
+- generated HTML contains cancel/delete controls and extracted JS passes `node --check`.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
