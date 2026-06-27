@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -87,6 +88,10 @@ def run_gigastt(
         str(model_dir),
         "--punct-model-dir",
         str(punct_model_dir),
+        "--punctuation",
+        "on",
+        "--itn",
+        "auto",
         "--format",
         "json",
         "--output",
@@ -104,6 +109,7 @@ def run_gigastt(
 
 def load_result(path: Path) -> GigasttResult:
     payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    text = str(payload.get("text", "")).strip()
     words = [
         GigasttWord(
             start=float(item.get("start", 0)),
@@ -117,9 +123,59 @@ def load_result(path: Path) -> GigasttResult:
     ]
     return GigasttResult(
         duration=float(payload.get("duration", 0)),
-        text=str(payload.get("text", "")).strip(),
-        words=words,
+        text=text,
+        words=_apply_display_text_to_words(text, words),
     )
+
+
+_WORD_KEY_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
+
+
+def _apply_display_text_to_words(text: str, words: list[GigasttWord]) -> list[GigasttWord]:
+    """Transfer punctuation/casing from GigaSTT text onto timestamped word tokens."""
+    if not text or not words:
+        return words
+    display_tokens = [token for token in text.split() if _word_key(token)]
+    if not display_tokens:
+        return words
+
+    mapped: list[GigasttWord] = []
+    token_index = 0
+    matched = 0
+    for word in words:
+        display = word.word
+        raw_key = _word_key(word.word)
+        if raw_key:
+            match_index = _next_matching_token(display_tokens, token_index, raw_key)
+            if match_index is not None:
+                display = display_tokens[match_index]
+                token_index = match_index + 1
+                matched += 1
+        mapped.append(
+            GigasttWord(
+                start=word.start,
+                end=word.end,
+                word=display,
+                confidence=word.confidence,
+                speaker=word.speaker,
+            )
+        )
+
+    if matched / max(1, len(words)) < 0.65:
+        return words
+    return mapped
+
+
+def _next_matching_token(tokens: list[str], start_index: int, raw_key: str, lookahead: int = 6) -> int | None:
+    end_index = min(len(tokens), start_index + lookahead)
+    for index in range(start_index, end_index):
+        if _word_key(tokens[index]) == raw_key:
+            return index
+    return None
+
+
+def _word_key(value: str) -> str:
+    return "".join(_WORD_KEY_RE.findall(value)).lower().replace("ё", "е")
 
 
 def segment_words(

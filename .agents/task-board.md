@@ -63,6 +63,28 @@ Read-only (не редактирую): `app/src/voice_recognizer/web.py` — т�
 
 Не пересекается с активным scope Codex (`setup_local_mac.sh`, `*.command`, `implementation-plan.md`, `local-mac-product-plan.md`, `README.md`).
 
+### Claude Code — задача 2: бенчмарк качества vs референс
+
+Status: DELIVERED (2026-06-27). Analysis-only, код не тронут.
+
+Что: сравнение нашей ASR+диаризации против референсного сервиса (`references/*.docx`) на 4 одинаковых файлах (Модуль 3 ×3, Носников), наши прогоны — `outputs/pipeline/`.
+
+Итог (кратко): ASR по полноте/скорости на уровне референса или выше (слов столько же или больше, покрытие 100%, RTF≈0.03); главный разрыв ASR — нет пунктуации/заглавных/«ё» и теряются термины/имена. Диаризация: на истинно 2-спикерных файлах совпадает (2=2); на многоголосых наши числа занижены, **но это в основном артефакт настроек** (Носников запущен с `num_speakers=2`, день2 упёрся в `max_speakers=8` при референсных 5 и 21). Сырых turn'ов pyannote достаточно (1712/2295) — проблема в кластеризации/лимитах, не в сегментации.
+
+Deliverable: `docs/quality-benchmark-references.md`. Рекомендации завязаны на этапы 4/5 `implementation-plan.md` и на дефолты диаризации в `web.py`.
+
+Read-only: `references/`, `outputs/pipeline/`, `app/src/...` — только источники. Не пересекается со scope Codex.
+
+### Claude Code — задача 3: ASR-модели и пунктуация/регистр
+
+Status: DELIVERED (2026-06-27). Analysis + ресёрч, код не тронут.
+
+Находка (важно для implementation): мы уже возим модель пунктуации RUPunct (`.models/gigastt/punct/rupunct_small_int8.onnx`) и передаём `--punct-model-dir`, но в выводе пунктуации/регистра/«ё» нет вообще (эмпирически: punct≈0/100w, caps≈0%, ё=0 против ~31 / 62–99% / 19–30 у референса). Все читаемые тексты собираются из сырых пословных токенов (`gigastt.py:263`), пунктуированный путь не используется.
+
+Варианты фикса: (B) заставить бинарь применять punct — проверить `gigastt transcribe --help` на Mac; (A) применить вшитый RUPunct пост-шагом в Python; (C) GigaAM v3 **e2e** (нативная пунктуация); (D) Whisper large-v3. Тесты других моделей и auto-диаризацию из песочницы запустить нельзя (Linux vs macOS-бинарь, сеть pip/HF закрыта) — протокол и скрипты для Mac в отчёте.
+
+Deliverables: `docs/asr-model-research.md`, `docs/asr-benchmark/score.py` (dependency-free скорер читабельности — гонять при смене модели). Привязка: этап 4/5.
+
 ### Implementation
 
 Status: DELIVERED (2026-06-26), Codex. UX implementation portion 1 from `.agents/next-task-ux-implementation.md`.
@@ -409,6 +431,32 @@ Checks:
 - in-app Browser on `http://127.0.0.1:8782/`: queue view shows only jobs/queue badges, ready-results view shows 15 results/result badge, opening a ready result keeps `Готовые` active and renders the right column, console clean;
 - mobile viewport 390px: Inbox badges, center switch and ready-results list render with no horizontal overflow;
 - fixed hidden-state CSS so list/badge `hidden` is not overridden by component `display` rules.
+
+### Implementation Quality Benchmark Follow-up
+
+Status: DELIVERED (2026-06-27), Codex. Apply the highest-ROI fixes from Claude quality audit.
+
+Scope:
+
+- `app/src/voice_recognizer/gigastt.py`
+- `app/config/speaker-counts.json`
+- `docs/asr-benchmark/score.py`
+- `docs/asr-model-research.md`
+- this `### Implementation Quality Benchmark Follow-up` block in `.agents/task-board.md`
+
+Goal:
+
+- preserve GigaSTT punctuation/casing from JSON `text` in timestamped speaker segments;
+- explicitly run GigaSTT with `--punctuation on --itn auto`;
+- remove hidden low speaker ceilings from benchmark/problem files;
+- make Claude's readability scorer usable with `--terms`.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- `gigastt transcribe` smoke on `Носников 0–30s`: punctuation/casing appears in JSON `text`;
+- `PYTHONPATH=app/src` smoke: segment exports inherit punctuation/casing from a punctuated GigaSTT JSON;
+- `docs/asr-benchmark/score.py` works with `--terms` before or after file arguments.
 
 ## Next Implementation Tasks
 
