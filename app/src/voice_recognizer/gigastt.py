@@ -5,6 +5,7 @@ import math
 import re
 import subprocess
 import time
+from hashlib import sha256
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,9 @@ from voice_recognizer.formatting import format_timestamp
 
 class GigasttError(RuntimeError):
     pass
+
+
+ASR_JSON_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,58 @@ def run_gigastt(
         details = (result.stderr or result.stdout).strip()
         suffix = f": {details}" if details else ""
         raise GigasttError(f"gigastt failed with exit code {result.returncode}{suffix}")
+    annotate_gigastt_json(
+        output_json,
+        asr_json_metadata(hotwords_file=hotwords_file, hotwords_default=hotwords_default),
+    )
     return time.perf_counter() - started
+
+
+def asr_json_metadata(*, hotwords_file: Path | None, hotwords_default: bool) -> dict[str, Any]:
+    return {
+        "asr_json_version": ASR_JSON_VERSION,
+        "gigastt": {
+            "punctuation": "on",
+            "itn": "auto",
+            "hotwords_file": str(hotwords_file) if hotwords_file is not None else None,
+            "hotwords_sha256": _file_sha256(hotwords_file) if hotwords_file is not None else None,
+            "hotwords_default": hotwords_default,
+        },
+    }
+
+
+def annotate_gigastt_json(path: Path, metadata: dict[str, Any]) -> None:
+    try:
+        payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise GigasttError(f"could not annotate gigastt JSON {path}: {error}") from error
+    payload["voice_recognizer"] = metadata
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+
+def gigastt_json_matches_options(
+    path: Path,
+    *,
+    hotwords_file: Path | None,
+    hotwords_default: bool,
+) -> bool:
+    try:
+        payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return payload.get("voice_recognizer") == asr_json_metadata(
+        hotwords_file=hotwords_file,
+        hotwords_default=hotwords_default,
+    )
+
+
+def _file_sha256(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        return sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
 
 
 def load_result(path: Path) -> GigasttResult:

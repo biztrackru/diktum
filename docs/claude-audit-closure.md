@@ -37,6 +37,18 @@
 | R5. Имена и термины | Partially closed | Добавлен `app/config/hotwords.txt`; CLI автоматически применяет его как GigaSTT `--hotwords-file`; в manifest пишется hotwords metadata. | Проверить на длинных файлах, расширить глоссарий под домены пользователя; built-in `--hotwords-default` оставлен ручным из-за неоднозначного smoke. |
 | R6. Регрессионный фикс-сет | Partially closed | Добавлен `docs/asr-benchmark/score.py`, исправлен `--terms`; документы описывают протокол сравнения. | Автоматический WER/docx benchmark не внедрен: в текущем venv нет `python-docx`/`jiwer`, а референсы приватные и ignored. |
 
+## 2026-06-27 stale artifact follow-up
+
+После первых UI-перепрогонов выяснилось, что manifest может быть новым, а `*.gigastt.json` или `*.pyannote.json` — старым: без галочки overwrite pipeline переиспользовал существующие intermediate artifacts. Поэтому clean-текст мог оставаться без пунктуации, даже когда manifest уже показывал новые лимиты и hotwords.
+
+Исправление:
+
+- новые GigaSTT JSON получают `voice_recognizer` metadata: версия ASR JSON, `punctuation=on`, `itn=auto`, hotwords path и hash;
+- новые pyannote JSON получают `voice_recognizer` metadata: версия diarization JSON, model id, device и speaker constraints;
+- при `skip_existing` pipeline теперь использует ASR/diarization JSON только если metadata совпадает с текущими опциями, иначе пишет `Refreshing stale ... JSON` и пересчитывает intermediate artifact.
+
+Практический эффект: следующий запуск через UI без ручной галочки overwrite уже должен пересчитать старые raw-ASR JSON и старые `num_speakers=2/max_speakers=8` diarization JSON.
+
 ## ASR/readability research
 
 | Рекомендация | Статус | Комментарий |

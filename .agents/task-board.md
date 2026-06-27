@@ -484,6 +484,32 @@ Checks:
 - smoke run confirms `app/config/hotwords.txt` is resolved and passed to GigaSTT;
 - closure document lists UX F1-F16 as closed and quality/ASR residual work explicitly.
 
+### Implementation Stale Artifact Invalidation
+
+Status: DELIVERED (2026-06-27), Codex. Prevent old ASR/diarization intermediates from masking quality fixes.
+
+Scope:
+
+- `app/src/voice_recognizer/gigastt.py`
+- `app/src/voice_recognizer/diarization.py`
+- `app/src/voice_recognizer/cli.py`
+- `docs/claude-audit-closure.md`
+- this `### Implementation Stale Artifact Invalidation` block in `.agents/task-board.md`
+
+Goal:
+
+- explain and fix why UI reruns could still show no punctuation;
+- annotate new GigaSTT JSON with punctuation/ITN/hotwords metadata;
+- annotate new pyannote JSON with model/device/speaker constraint metadata;
+- refresh stale intermediate JSON automatically when current options do not match.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- stale existing `outputs/pipeline/*gigastt.json` and `*.pyannote.json` return metadata mismatch;
+- fresh 5s `transcribe-gigastt` smoke writes current ASR metadata and remains punctuated;
+- synthetic diarization metadata smoke distinguishes current `2-12` from stale exact `2`.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

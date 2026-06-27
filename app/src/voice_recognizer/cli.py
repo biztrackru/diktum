@@ -14,6 +14,7 @@ from voice_recognizer.audio import AudioToolError, iter_media_files, normalize_a
 from voice_recognizer.diarization import (
     DiarizationError,
     assign_speakers,
+    diarization_json_matches_options,
     load_diarization_json,
     resolve_hf_token,
     run_pyannote,
@@ -26,6 +27,8 @@ from voice_recognizer.gigastt import (
     GigasttResult,
     GigasttSegment,
     GigasttWord,
+    asr_json_metadata,
+    gigastt_json_matches_options,
     load_result,
     run_gigastt,
     segment_words,
@@ -339,9 +342,15 @@ def _run_asr_to_json(
             console.print(f"[yellow]Using ASR chunk audio:[/yellow] {chunk.audio_path}")
         else:
             normalize_audio(audio_path, chunk.audio_path, start=chunk.start, duration=chunk.duration)
-        if skip_existing and chunk.json_path.exists():
+        if skip_existing and chunk.json_path.exists() and gigastt_json_matches_options(
+            chunk.json_path,
+            hotwords_file=hotwords_file,
+            hotwords_default=hotwords_default,
+        ):
             console.print(f"[yellow]Using ASR chunk JSON:[/yellow] {chunk.json_path}")
         else:
+            if skip_existing and chunk.json_path.exists():
+                console.print(f"[yellow]Refreshing stale ASR chunk JSON:[/yellow] {chunk.json_path}")
             console.print(
                 f"[cyan]ASR chunk {chunk.index}/{len(chunks)}:[/cyan] "
                 f"{chunk.start:.1f}s + {chunk.duration:.1f}s"
@@ -367,6 +376,7 @@ def _run_asr_to_json(
             text=" ".join(part for part in text_parts if part).strip(),
             words=combined_words,
         ),
+        metadata=asr_json_metadata(hotwords_file=hotwords_file, hotwords_default=hotwords_default),
     )
     console.print(f"[green]Combined ASR JSON:[/green] {asr_json}")
     return total_engine_seconds
@@ -389,7 +399,7 @@ def _shift_gigastt_words(words: list[GigasttWord], *, offset: float, max_end: fl
     return shifted
 
 
-def _write_gigastt_json(path: Path, result: GigasttResult) -> Path:
+def _write_gigastt_json(path: Path, result: GigasttResult, *, metadata: dict[str, object] | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "duration": result.duration,
@@ -405,6 +415,8 @@ def _write_gigastt_json(path: Path, result: GigasttResult) -> Path:
             for word in result.words
         ],
     }
+    if metadata is not None:
+        payload["voice_recognizer"] = metadata
     path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     return path
 
@@ -607,9 +619,16 @@ def _run_pipeline_to_outputs(
         console.print(f"[green]Prepared audio:[/green] {audio_path}")
 
     engine_seconds: float | None = None
-    if skip_existing and asr_json.exists():
+    asr_json_current = asr_json.exists() and gigastt_json_matches_options(
+        asr_json,
+        hotwords_file=hotwords_file,
+        hotwords_default=hotwords_default,
+    )
+    if skip_existing and asr_json.exists() and asr_json_current:
         console.print(f"[yellow]Using ASR JSON:[/yellow] {asr_json}")
     else:
+        if skip_existing and asr_json.exists() and not asr_json_current:
+            console.print(f"[yellow]Refreshing stale ASR JSON:[/yellow] {asr_json}")
         console.print(f"[cyan]ASR engine:[/cyan] {ASR_ENGINE_LABELS[asr_engine]}")
         engine_seconds = _run_asr_to_json(
             audio_path=audio_path,
@@ -628,10 +647,20 @@ def _run_pipeline_to_outputs(
         console.print(f"[green]ASR JSON:[/green] {asr_json}")
 
     diarization_seconds: float | None = None
-    if skip_existing and diarization_json.exists():
+    diarization_json_current = diarization_json.exists() and diarization_json_matches_options(
+        diarization_json,
+        model_id=pyannote_model_id,
+        device=device,
+        num_speakers=num_speakers,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
+    )
+    if skip_existing and diarization_json.exists() and diarization_json_current:
         console.print(f"[yellow]Using diarization JSON:[/yellow] {diarization_json}")
         turns = load_diarization_json(diarization_json)
     else:
+        if skip_existing and diarization_json.exists() and not diarization_json_current:
+            console.print(f"[yellow]Refreshing stale diarization JSON:[/yellow] {diarization_json}")
         run = run_pyannote(
             audio_path=audio_path,
             model_id=pyannote_model_id,
@@ -648,6 +677,10 @@ def _run_pipeline_to_outputs(
             audio_path=audio_path,
             model_id=pyannote_model_id,
             run=run,
+            device=device,
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
         )
         console.print(f"[green]Diarization JSON:[/green] {diarization_json}")
 
@@ -863,12 +896,19 @@ def batch_gigastt(
         output_json = output_dir / f"{stem}.gigastt.json"
         output_markdown = output_dir / f"{stem}.transcript.md"
         console.print(f"[cyan][{index}/{len(files)}][/cyan] {source.name}")
-        if skip_existing and output_json.exists() and output_markdown.exists():
+        output_json_current = output_json.exists() and gigastt_json_matches_options(
+            output_json,
+            hotwords_file=resolved_hotwords,
+            hotwords_default=hotwords_default,
+        )
+        if skip_existing and output_json.exists() and output_markdown.exists() and output_json_current:
             result = load_result(output_json)
             speaker_count = len({word.speaker for word in result.words if word.speaker is not None})
             rows.append((source, output_json, output_markdown, result.duration, 0.0, len(result.words), speaker_count, "skipped"))
             console.print("[yellow]Skipped existing result.[/yellow]")
             continue
+        if skip_existing and output_json.exists() and not output_json_current:
+            console.print(f"[yellow]Refreshing stale ASR JSON:[/yellow] {output_json}")
         try:
             result_json, result_markdown, duration, engine_seconds, word_count, speaker_count = _run_gigastt_to_outputs(
                 source=source,
@@ -1152,7 +1192,16 @@ def diarize_pyannote(
         raise typer.BadParameter(str(error)) from error
 
     output_json = output_dir / f"{stem}{suffix}.pyannote.json"
-    write_diarization_json(output_json, audio_path=audio_path, model_id=model_id, run=run)
+    write_diarization_json(
+        output_json,
+        audio_path=audio_path,
+        model_id=model_id,
+        run=run,
+        device=device,
+        num_speakers=num_speakers,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
+    )
     console.print(f"[green]Diarization JSON:[/green] {output_json}")
     console.print(
         f"[cyan]Detected {len({turn.speaker for turn in run.turns})} speakers "

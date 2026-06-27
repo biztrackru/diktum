@@ -16,6 +16,9 @@ class DiarizationError(RuntimeError):
     pass
 
 
+DIARIZATION_JSON_VERSION = 1
+
+
 @dataclass(frozen=True)
 class DiarizationTurn:
     start: float
@@ -154,12 +157,23 @@ def write_diarization_json(
     audio_path: Path,
     model_id: str,
     run: DiarizationRun,
+    device: str | None = None,
+    num_speakers: int | None = None,
+    min_speakers: int | None = None,
+    max_speakers: int | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "audio": str(audio_path),
         "model": model_id,
         "elapsed_seconds": run.elapsed_seconds,
+        "voice_recognizer": diarization_json_metadata(
+            model_id=model_id,
+            device=device,
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+        ),
         "turns": [
             {
                 "start": turn.start,
@@ -172,6 +186,50 @@ def write_diarization_json(
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def diarization_json_metadata(
+    *,
+    model_id: str,
+    device: str | None,
+    num_speakers: int | None,
+    min_speakers: int | None,
+    max_speakers: int | None,
+) -> dict[str, Any]:
+    return {
+        "diarization_json_version": DIARIZATION_JSON_VERSION,
+        "pyannote": {
+            "model_id": model_id,
+            "device": device,
+            "speaker_constraints": {
+                "num_speakers": num_speakers,
+                "min_speakers": min_speakers,
+                "max_speakers": max_speakers,
+            },
+        },
+    }
+
+
+def diarization_json_matches_options(
+    path: Path,
+    *,
+    model_id: str,
+    device: str | None,
+    num_speakers: int | None,
+    min_speakers: int | None,
+    max_speakers: int | None,
+) -> bool:
+    try:
+        payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return payload.get("voice_recognizer") == diarization_json_metadata(
+        model_id=model_id,
+        device=device,
+        num_speakers=num_speakers,
+        min_speakers=min_speakers,
+        max_speakers=max_speakers,
+    )
 
 
 def load_diarization_json(path: Path) -> list[DiarizationTurn]:
