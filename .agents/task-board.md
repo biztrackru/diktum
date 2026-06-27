@@ -585,6 +585,32 @@ Checks:
 - delete API smoke removes done/canceled jobs from `/api/jobs`;
 - generated HTML contains cancel/delete controls and extracted JS passes `node --check`.
 
+### Implementation Speaker Quality Diagnostics
+
+Status: DELIVERED (2026-06-27), Codex. Surface speaker-turn fragmentation before changing diarization heuristics.
+
+Scope:
+
+- `app/src/voice_recognizer/gigastt.py`
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation Speaker Quality Diagnostics` block in `.agents/task-board.md`
+
+Goal:
+
+- compute lightweight metrics for speaker switchiness and very short speaker turns;
+- write `speaker_quality` into manifests;
+- show `Качество спикеров` in the result overview;
+- make phrase-splitting problems visible on long recordings without manual transcript inspection.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- synthetic speaker-island smoke returns `warning` with `short_speaker_islands`;
+- existing result JSON smoke flags `Носников` and `Модуль 3, день 2` as `warning`;
+- generated HTML contains `Качество спикеров` and extracted JS passes `node --check`;
+- in-app Browser on `http://127.0.0.1:8790/`: page loads, console clean, disk result overview shows `Качество спикеров`; legacy manifests without `speaker_quality` show `-` until rerendered.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

@@ -19,6 +19,7 @@ class GigasttError(RuntimeError):
 
 ASR_JSON_VERSION = 2
 ASR_QUALITY_VERSION = 1
+SPEAKER_QUALITY_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -316,6 +317,86 @@ def analyze_asr_quality(result: GigasttResult) -> dict[str, object]:
     }
 
 
+def analyze_speaker_quality(segments: list[GigasttSegment]) -> dict[str, object]:
+    speaker_segments = [segment for segment in segments if segment.speaker is not None]
+    speaker_count = len({segment.speaker for segment in speaker_segments})
+    segment_count = len(speaker_segments)
+    if not speaker_segments:
+        return {
+            "version": SPEAKER_QUALITY_VERSION,
+            "status": "warning",
+            "warnings": ["no_speaker_labels"],
+            "speaker_count": 0,
+            "segment_count": 0,
+            "speaker_switch_count": 0,
+            "switches_per_minute": 0.0,
+            "short_turn_count": 0,
+            "short_turn_percent": 0.0,
+            "speaker_island_count": 0,
+            "median_turn_seconds": 0.0,
+            "median_turn_words": 0.0,
+        }
+
+    durations = [max(0.0, segment.end - segment.start) for segment in speaker_segments]
+    word_counts = [len(_WORD_TOKEN_RE.findall(segment.text)) for segment in speaker_segments]
+    short_turn_indexes = {
+        index
+        for index, (duration, word_count) in enumerate(zip(durations, word_counts, strict=True))
+        if duration <= 1.2 or word_count <= 2
+    }
+    switch_count = sum(
+        1
+        for previous, current in zip(speaker_segments, speaker_segments[1:], strict=False)
+        if previous.speaker != current.speaker
+    )
+    total_minutes = max(1 / 60, (speaker_segments[-1].end - speaker_segments[0].start) / 60)
+    speaker_island_count = 0
+    for index in range(1, len(speaker_segments) - 1):
+        previous = speaker_segments[index - 1]
+        current = speaker_segments[index]
+        following = speaker_segments[index + 1]
+        if (
+            index in short_turn_indexes
+            and previous.speaker == following.speaker
+            and current.speaker != previous.speaker
+        ):
+            speaker_island_count += 1
+
+    short_turn_percent = len(short_turn_indexes) / max(1, segment_count) * 100
+    switches_per_minute = switch_count / total_minutes
+    warnings: list[str] = []
+    if speaker_count < 2:
+        warnings.append("single_speaker_or_unassigned")
+    if segment_count >= 20 and short_turn_percent >= 18:
+        warnings.append("many_short_turns")
+    if segment_count >= 20 and switches_per_minute >= 12:
+        warnings.append("frequent_speaker_switches")
+    if speaker_island_count >= 5 or (
+        segment_count >= 20 and speaker_island_count / max(1, segment_count) >= 0.04
+    ):
+        warnings.append("short_speaker_islands")
+
+    if segment_count < 10:
+        status = "unknown" if not warnings else "warning"
+    else:
+        status = "warning" if warnings else "ok"
+
+    return {
+        "version": SPEAKER_QUALITY_VERSION,
+        "status": status,
+        "warnings": warnings,
+        "speaker_count": speaker_count,
+        "segment_count": segment_count,
+        "speaker_switch_count": switch_count,
+        "switches_per_minute": round(switches_per_minute, 1),
+        "short_turn_count": len(short_turn_indexes),
+        "short_turn_percent": round(short_turn_percent, 1),
+        "speaker_island_count": speaker_island_count,
+        "median_turn_seconds": round(_median(durations), 1),
+        "median_turn_words": round(_median([float(value) for value in word_counts]), 1),
+    }
+
+
 def segment_words(
     words: list[GigasttWord],
     *,
@@ -456,3 +537,13 @@ def _segment_from_words(words: list[GigasttWord], speaker: int | None) -> Gigast
         speaker=speaker,
         text=" ".join(word.word for word in words),
     )
+
+
+def _median(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    middle = len(sorted_values) // 2
+    if len(sorted_values) % 2:
+        return sorted_values[middle]
+    return (sorted_values[middle - 1] + sorted_values[middle]) / 2

@@ -2501,6 +2501,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         ["Источник", job.source_name || "-"],
         ["ASR", job.asr_engine || "не указан"],
         ["Качество ASR", asrQualityLabel(job)],
+        ["Качество спикеров", speakerQualityLabel(job)],
         ["Спикеры", `${{samples.length || job.num_speakers || 0}}`],
         ["Обработано", formatDateTime(job.completed_at)],
         ["Окно", clipLabel(job)],
@@ -2620,7 +2621,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const samples = (job.speaker_samples || [])
         .map((sample) => `${{sample.speaker}}=${{sample.url}}:${{sample.label}}:${{sample.name || ""}}`)
         .join("|");
-      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{job.source_status || ""}}:${{files}}:${{samples}}`;
+      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{job.source_status || ""}}:${{qualityRenderKey(job)}}:${{files}}:${{samples}}`;
     }}
 
     function jobBadges(job) {{
@@ -2744,6 +2745,32 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const punct = metricValue(quality.punctuation_per_100_words);
       const caps = metricValue(quality.sentence_capitalized_percent);
       return `${{status}} · ${{punct}}/100 · ${{caps}}%`;
+    }}
+
+    function speakerQualityLabel(job) {{
+      const quality = job?.speaker_quality;
+      if (!quality) return "-";
+      const status = quality.status === "warning"
+        ? "проверить"
+        : quality.status === "ok"
+          ? "норма"
+          : "мало данных";
+      const shortTurns = metricValue(quality.short_turn_percent);
+      const switches = metricValue(quality.switches_per_minute);
+      const islands = Number.isFinite(Number(quality.speaker_island_count))
+        ? Number(quality.speaker_island_count)
+        : "-";
+      return `${{status}} · коротких ${{shortTurns}}% · смен ${{switches}}/мин · островков ${{islands}}`;
+    }}
+
+    function qualityRenderKey(job) {{
+      const asrQuality = job?.asr_quality
+        ? `${{job.asr_quality.status}}:${{job.asr_quality.punctuation_per_100_words}}:${{job.asr_quality.sentence_capitalized_percent}}`
+        : "";
+      const speakerQuality = job?.speaker_quality
+        ? `${{job.speaker_quality.status}}:${{job.speaker_quality.short_turn_percent}}:${{job.speaker_quality.switches_per_minute}}:${{job.speaker_quality.speaker_island_count}}`
+        : "";
+      return `${{asrQuality}}|${{speakerQuality}}`;
     }}
 
     function metricValue(value) {{
@@ -3459,6 +3486,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
         "log": [f"Готовый результат из {_relative_display(root, manifest_path)}\n"],
         "asr_engine": str(manifest.get("asr_engine") or ""),
         "asr_quality": _manifest_asr_quality(manifest),
+        "speaker_quality": _manifest_speaker_quality(manifest),
         "device": str(manifest.get("device") or ""),
         "speaker_mode": speaker_mode,
         "start": clip_start,
@@ -3534,6 +3562,11 @@ def _manifest_asr_quality(manifest: dict[str, object]) -> dict[str, object] | No
     return quality if isinstance(quality, dict) else None
 
 
+def _manifest_speaker_quality(manifest: dict[str, object]) -> dict[str, object] | None:
+    quality = manifest.get("speaker_quality")
+    return quality if isinstance(quality, dict) else None
+
+
 def _find_result_manifest(result_id: str, root: Path) -> Path:
     for manifest_path in (root / "outputs").resolve().glob("**/*.manifest.json"):
         if _result_id(manifest_path, root) == result_id:
@@ -3564,6 +3597,7 @@ def _job_payload(job: Job, root: Path) -> dict[str, object]:
         "process_pid": job.process_pid,
         "asr_engine": job.asr_engine,
         "asr_quality": _manifest_asr_quality(manifest),
+        "speaker_quality": _manifest_speaker_quality(manifest),
         "device": job.device,
         "speaker_mode": job.speaker_mode,
         "start": job.start,
