@@ -611,6 +611,31 @@ Checks:
 - generated HTML contains `Качество спикеров` and extracted JS passes `node --check`;
 - in-app Browser on `http://127.0.0.1:8790/`: page loads, console clean, disk result overview shows `Качество спикеров`; legacy manifests without `speaker_quality` show `-` until rerendered.
 
+### Implementation Quality Manifest Refresh
+
+Status: DELIVERED (2026-06-27), Codex. Backfill quality diagnostics for existing manifests without rerunning ASR or diarization.
+
+Scope:
+
+- `app/src/voice_recognizer/cli.py`
+- `README.md`
+- this `### Implementation Quality Manifest Refresh` block in `.agents/task-board.md`
+
+Goal:
+
+- add a CLI command that reads existing `*.manifest.json`, `*.gigastt.json` and `*.pyannote.json`;
+- refresh `asr_quality` and `speaker_quality` fields only;
+- avoid launching GigaSTT, pyannote or touching audio files;
+- make old UI result cards show speaker quality after a lightweight backfill.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- CLI help exposes `refresh-quality`;
+- `/tmp` manifest smoke updates `asr_quality`, `speaker_quality`, `quality_refreshed_at` and honors `--force --no-smooth-speakers`;
+- `outputs/pipeline` backfill updated existing `Модуль 3, день 2` and `Носников` manifests without launching ASR/diarization;
+- in-app Browser on `http://127.0.0.1:8790/`: refreshed `Модуль 3, день 2` overview shows `Качество спикеров: проверить · коротких 19.6% · смен 2.5/мин · островков 42`, console clean.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

@@ -273,6 +273,12 @@ set +a
 .venv/bin/voice-recognizer process 'Inbox/Оля коридоре а сайта восторга.m4a' --no-smooth-speakers
 ```
 
+Если результат уже был создан старой версией и в интерфейсе напротив `Качество спикеров` показан `-`, можно обновить только диагностические поля manifest без повторного ASR и диаризации:
+
+```bash
+.venv/bin/voice-recognizer refresh-quality outputs/pipeline
+```
+
 Batch-обработка папки с разделением по спикерам:
 
 ```bash

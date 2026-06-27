@@ -610,6 +610,84 @@ def _write_manifest(
     return path
 
 
+def _refresh_manifest_quality(
+    manifest_path: Path,
+    *,
+    force: bool = False,
+    max_gap_seconds: float = 1.8,
+    smooth_speakers: bool = True,
+    speaker_island_max_words: int = 2,
+    speaker_island_max_seconds: float = 1.2,
+    speaker_bridge_gap_seconds: float = 0.8,
+) -> str:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read manifest: {error}") from error
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest is not a JSON object")
+    if not force and isinstance(manifest.get("asr_quality"), dict) and isinstance(manifest.get("speaker_quality"), dict):
+        return "skipped"
+
+    asr_json = _manifest_artifact_path(manifest_path, manifest.get("asr_json"), required=True)
+    diarization_json = _manifest_artifact_path(manifest_path, manifest.get("diarization_json"), required=False)
+    result = load_result(asr_json)
+    result_for_speakers = result
+    if diarization_json is not None:
+        result_for_speakers = assign_speakers(
+            result,
+            load_diarization_json(diarization_json),
+            smooth=smooth_speakers,
+            island_max_words=speaker_island_max_words,
+            island_max_seconds=speaker_island_max_seconds,
+            bridge_gap_seconds=speaker_bridge_gap_seconds,
+        )
+    segments = segment_words(result_for_speakers.words, max_gap_seconds=max_gap_seconds)
+    manifest["asr_quality"] = analyze_asr_quality(result)
+    manifest["speaker_quality"] = analyze_speaker_quality(segments)
+    manifest["quality_refreshed_at"] = time.time()
+    manifest["quality_options"] = {
+        "max_gap_seconds": max_gap_seconds,
+        "smooth_speakers": smooth_speakers,
+        "speaker_island_max_words": speaker_island_max_words,
+        "speaker_island_max_seconds": speaker_island_max_seconds,
+        "speaker_bridge_gap_seconds": speaker_bridge_gap_seconds,
+    }
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return "updated"
+
+
+def _manifest_artifact_path(manifest_path: Path, value: object, *, required: bool) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        if required:
+            raise ValueError("manifest artifact path is missing")
+        return None
+    raw = Path(value)
+    candidates: list[Path]
+    if raw.is_absolute():
+        candidates = [raw]
+    else:
+        candidates = [
+            raw,
+            Path.cwd() / raw,
+            manifest_path.parent / raw,
+            manifest_path.parent / raw.name,
+        ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    if required:
+        raise ValueError(f"manifest artifact not found: {value}")
+    return None
+
+
+def _iter_manifest_paths(target: Path, *, recursive: bool) -> list[Path]:
+    if target.is_file():
+        return [target]
+    pattern = "**/*.manifest.json" if recursive else "*.manifest.json"
+    return sorted(target.glob(pattern))
+
+
 def _run_pipeline_to_outputs(
     *,
     source: Path,
@@ -1082,6 +1160,55 @@ def process_file(
         f"{outputs.speaker_count} speakers. ASR: {_seconds_label(outputs.engine_seconds)}, "
         f"diarization: {_seconds_label(outputs.diarization_seconds)}.[/cyan]"
     )
+
+
+@app.command("refresh-quality")
+def refresh_quality(
+    target: Path = typer.Argument(..., exists=True, readable=True, help="Manifest JSON file or directory with manifests."),
+    recursive: bool = typer.Option(True, "--recursive/--no-recursive", help="Find manifests recursively when target is a directory."),
+    force: bool = typer.Option(False, "--force", help="Refresh even when quality fields already exist."),
+    max_gap_seconds: float = typer.Option(1.8, "--max-gap", help="Pause that starts a new segment."),
+    smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),
+    speaker_island_max_words: int = typer.Option(2, "--speaker-island-max-words"),
+    speaker_island_max_seconds: float = typer.Option(1.2, "--speaker-island-max-seconds"),
+    speaker_bridge_gap_seconds: float = typer.Option(0.8, "--speaker-bridge-gap"),
+) -> None:
+    """Refresh manifest quality metrics without rerunning ASR or diarization."""
+    manifests = _iter_manifest_paths(target, recursive=recursive)
+    if not manifests:
+        console.print(f"[yellow]No manifest files found in {target}.[/yellow]")
+        return
+
+    table = Table(title="Quality Refresh")
+    table.add_column("Manifest")
+    table.add_column("Status")
+    table.add_column("Details")
+    updated = 0
+    failed = 0
+    skipped = 0
+    for manifest_path in manifests:
+        try:
+            status = _refresh_manifest_quality(
+                manifest_path,
+                force=force,
+                max_gap_seconds=max_gap_seconds,
+                smooth_speakers=smooth_speakers,
+                speaker_island_max_words=speaker_island_max_words,
+                speaker_island_max_seconds=speaker_island_max_seconds,
+                speaker_bridge_gap_seconds=speaker_bridge_gap_seconds,
+            )
+        except ValueError as error:
+            failed += 1
+            table.add_row(str(manifest_path), "error", str(error))
+            continue
+        if status == "updated":
+            updated += 1
+            table.add_row(str(manifest_path), "updated", "quality fields refreshed")
+        else:
+            skipped += 1
+            table.add_row(str(manifest_path), "skipped", "quality fields already present")
+    console.print(table)
+    console.print(f"[cyan]Updated: {updated}, skipped: {skipped}, failed: {failed}.[/cyan]")
 
 
 @app.command("batch-process")
