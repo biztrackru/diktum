@@ -18,6 +18,7 @@ class GigasttError(RuntimeError):
 
 
 ASR_JSON_VERSION = 2
+ASR_QUALITY_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -227,6 +228,8 @@ def load_result(path: Path) -> GigasttResult:
 
 
 _WORD_KEY_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
+_WORD_TOKEN_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
+_SENTENCE_START_RE = re.compile(r"(?:^|[.!?]\s+)([A-Za-zА-Яа-яЁё])")
 
 
 def _apply_display_text_to_words(text: str, words: list[GigasttWord]) -> list[GigasttWord]:
@@ -274,6 +277,43 @@ def _next_matching_token(tokens: list[str], start_index: int, raw_key: str, look
 
 def _word_key(value: str) -> str:
     return "".join(_WORD_KEY_RE.findall(value)).lower().replace("ё", "е")
+
+
+def analyze_asr_quality(result: GigasttResult) -> dict[str, object]:
+    text = result.text or " ".join(word.word for word in result.words)
+    tokens = _WORD_TOKEN_RE.findall(text)
+    word_count = len(result.words) or len(tokens)
+    punctuation_count = sum(text.count(char) for char in ".,?!:;")
+    upper_word_count = sum(1 for token in tokens if token[:1].isalpha() and token[:1].isupper())
+    sentence_starts = _SENTENCE_START_RE.findall(text)
+    sentence_capitalized_count = sum(1 for char in sentence_starts if char.isupper())
+    punctuation_per_100_words = punctuation_count / max(1, word_count) * 100
+    upper_word_percent = upper_word_count / max(1, len(tokens)) * 100
+    sentence_capitalized_percent = sentence_capitalized_count / max(1, len(sentence_starts)) * 100
+    warnings: list[str] = []
+
+    if word_count < 50:
+        status = "unknown"
+    else:
+        if punctuation_per_100_words < 5:
+            warnings.append("low_punctuation")
+        if sentence_starts and sentence_capitalized_percent < 35:
+            warnings.append("low_sentence_casing")
+        if not sentence_starts and upper_word_percent < 0.5:
+            warnings.append("low_casing")
+        status = "warning" if warnings else "ok"
+
+    return {
+        "version": ASR_QUALITY_VERSION,
+        "status": status,
+        "warnings": warnings,
+        "word_count": word_count,
+        "punctuation_count": punctuation_count,
+        "punctuation_per_100_words": round(punctuation_per_100_words, 1),
+        "upper_word_percent": round(upper_word_percent, 1),
+        "sentence_start_count": len(sentence_starts),
+        "sentence_capitalized_percent": round(sentence_capitalized_percent, 1),
+    }
 
 
 def segment_words(

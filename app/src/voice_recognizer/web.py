@@ -2390,6 +2390,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const rows = [
         ["Источник", job.source_name || "-"],
         ["ASR", job.asr_engine || "не указан"],
+        ["Качество ASR", asrQualityLabel(job)],
         ["Спикеры", `${{samples.length || job.num_speakers || 0}}`],
         ["Обработано", formatDateTime(job.completed_at)],
         ["Окно", clipLabel(job)],
@@ -2614,6 +2615,23 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function resultKindLabel(kind) {{
       return kind === "clip" ? "фрагмент" : "полный";
+    }}
+
+    function asrQualityLabel(job) {{
+      const quality = job?.asr_quality;
+      if (!quality) return "-";
+      const status = quality.status === "warning"
+        ? "проверить"
+        : quality.status === "ok"
+          ? "норма"
+          : "мало данных";
+      const punct = metricValue(quality.punctuation_per_100_words);
+      const caps = metricValue(quality.sentence_capitalized_percent);
+      return `${{status}} · ${{punct}}/100 · ${{caps}}%`;
+    }}
+
+    function metricValue(value) {{
+      return Number.isFinite(Number(value)) ? Number(value).toFixed(1) : "-";
     }}
 
     function renderExportGroups(files) {{
@@ -3229,6 +3247,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
         "completed_at": completed_at,
         "log": [f"Готовый результат из {_relative_display(root, manifest_path)}\n"],
         "asr_engine": str(manifest.get("asr_engine") or ""),
+        "asr_quality": _manifest_asr_quality(manifest),
         "device": str(manifest.get("device") or ""),
         "speaker_mode": speaker_mode,
         "start": clip_start,
@@ -3299,6 +3318,11 @@ def _manifest_speaker_constraints(manifest: dict[str, object]) -> tuple[int | No
     )
 
 
+def _manifest_asr_quality(manifest: dict[str, object]) -> dict[str, object] | None:
+    quality = manifest.get("asr_quality")
+    return quality if isinstance(quality, dict) else None
+
+
 def _find_result_manifest(result_id: str, root: Path) -> Path:
     for manifest_path in (root / "outputs").resolve().glob("**/*.manifest.json"):
         if _result_id(manifest_path, root) == result_id:
@@ -3326,6 +3350,7 @@ def _job_payload(job: Job, root: Path) -> dict[str, object]:
         "completed_at": job.completed_at,
         "log": job.log,
         "asr_engine": job.asr_engine,
+        "asr_quality": _manifest_asr_quality(manifest),
         "device": job.device,
         "speaker_mode": job.speaker_mode,
         "start": job.start,

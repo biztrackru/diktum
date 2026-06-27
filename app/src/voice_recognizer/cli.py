@@ -27,6 +27,7 @@ from voice_recognizer.gigastt import (
     GigasttResult,
     GigasttSegment,
     GigasttWord,
+    analyze_asr_quality,
     asr_json_metadata,
     gigastt_json_matches_options,
     load_result,
@@ -560,6 +561,7 @@ def _write_manifest(
     num_speakers: int | None,
     min_speakers: int | None,
     max_speakers: int | None,
+    asr_quality: dict[str, object],
     created_at: float,
     completed_at: float,
 ) -> Path:
@@ -589,6 +591,7 @@ def _write_manifest(
         "device": device,
         "asr_hotwords_file": str(hotwords_file) if hotwords_file is not None else None,
         "asr_hotwords_default": hotwords_default,
+        "asr_quality": asr_quality,
         "speaker_constraints": {
             "num_speakers": num_speakers,
             "min_speakers": min_speakers,
@@ -732,6 +735,7 @@ def _run_pipeline_to_outputs(
         island_max_seconds=speaker_island_max_seconds,
         bridge_gap_seconds=speaker_bridge_gap_seconds,
     )
+    asr_quality = analyze_asr_quality(result)
     segments = segment_words(result.words, max_gap_seconds=max_gap_seconds)
     outputs = _render_transcript_bundle(
         source=source,
@@ -770,6 +774,7 @@ def _run_pipeline_to_outputs(
         num_speakers=num_speakers,
         min_speakers=min_speakers,
         max_speakers=max_speakers,
+        asr_quality=asr_quality,
         created_at=created_at,
         completed_at=time.time(),
     )

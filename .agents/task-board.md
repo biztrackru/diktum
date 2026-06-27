@@ -537,6 +537,30 @@ Checks:
 - ASR chunk smoke produced `part-001_0s_600s` artifacts and combined punctuation;
 - old ASR JSON version 1 returns metadata mismatch.
 
+### Implementation ASR Quality Diagnostics
+
+Status: DELIVERED (2026-06-27), Codex. Surface ASR readability regressions in manifests and UI.
+
+Scope:
+
+- `app/src/voice_recognizer/gigastt.py`
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/web.py`
+- this `### Implementation ASR Quality Diagnostics` block in `.agents/task-board.md`
+
+Goal:
+
+- compute lightweight ASR quality metrics after loading GigaSTT output;
+- write `asr_quality` into each manifest;
+- show `Качество ASR` in the result overview;
+- flag future low-punctuation/low-casing regressions without requiring manual inspection of long transcripts.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- manifest smoke includes `asr_quality.status=ok` for the refreshed long results;
+- UI payload exposes `asr_quality` for disk results.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.
