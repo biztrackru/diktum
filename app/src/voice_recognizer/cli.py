@@ -42,7 +42,7 @@ app = typer.Typer(no_args_is_help=True)
 console = Console()
 
 GIGASTT_SAFE_SINGLE_FILE_SECONDS = 6900.0
-DEFAULT_ASR_CHUNK_SECONDS = 3600.0
+DEFAULT_ASR_CHUNK_SECONDS = 600.0
 MIN_ASR_CHUNK_SECONDS = 10.0
 MIN_ASR_TAIL_SECONDS = 5.0
 
@@ -272,27 +272,48 @@ def _plan_asr_chunks(
         remaining = duration_seconds - start
         if chunks and remaining <= MIN_ASR_TAIL_SECONDS:
             previous = chunks[-1]
+            merged_duration = previous.duration + remaining
+            chunk_token = _asr_chunk_token(previous.start, merged_duration)
             chunks[-1] = AsrChunk(
                 index=previous.index,
                 start=previous.start,
-                duration=previous.duration + remaining,
-                audio_path=previous.audio_path,
-                json_path=previous.json_path,
+                duration=merged_duration,
+                audio_path=cache_dir / f"{stem}.part-{previous.index:03d}_{chunk_token}.wav",
+                json_path=output_dir / f"{stem}.part-{previous.index:03d}_{chunk_token}.gigastt.json",
             )
             break
         current_duration = min(chunk_seconds, remaining)
         index = len(chunks) + 1
+        chunk_token = _asr_chunk_token(start, current_duration)
         chunks.append(
             AsrChunk(
                 index=index,
                 start=start,
                 duration=current_duration,
-                audio_path=cache_dir / f"{stem}.part-{index:03d}.wav",
-                json_path=output_dir / f"{stem}.part-{index:03d}.gigastt.json",
+                audio_path=cache_dir / f"{stem}.part-{index:03d}_{chunk_token}.wav",
+                json_path=output_dir / f"{stem}.part-{index:03d}_{chunk_token}.gigastt.json",
             )
         )
         start += current_duration
     return chunks
+
+
+def _effective_asr_chunk_seconds(*, audio_duration: float, chunk_seconds: float) -> float | None:
+    if audio_duration <= 0:
+        return None
+    if chunk_seconds <= 0:
+        return GIGASTT_SAFE_SINGLE_FILE_SECONDS if audio_duration > GIGASTT_SAFE_SINGLE_FILE_SECONDS else None
+    safe_chunk_seconds = min(chunk_seconds, GIGASTT_SAFE_SINGLE_FILE_SECONDS)
+    return safe_chunk_seconds if audio_duration > safe_chunk_seconds else None
+
+
+def _asr_chunk_token(start: float, duration: float) -> str:
+    return f"{_seconds_token(start)}s_{_seconds_token(duration)}s"
+
+
+def _seconds_token(value: float) -> str:
+    text = f"{value:.3f}".rstrip("0").rstrip(".")
+    return text.replace(".", "p")
 
 
 def _run_asr_to_json(
@@ -311,7 +332,11 @@ def _run_asr_to_json(
     skip_existing: bool,
 ) -> float:
     audio_duration = probe_audio(audio_path).duration_seconds
-    if chunk_seconds <= 0 or audio_duration <= GIGASTT_SAFE_SINGLE_FILE_SECONDS:
+    effective_chunk_seconds = _effective_asr_chunk_seconds(
+        audio_duration=audio_duration,
+        chunk_seconds=chunk_seconds,
+    )
+    if effective_chunk_seconds is None:
         return run_gigastt(
             gigastt_bin=gigastt_bin,
             source=audio_path,
@@ -322,17 +347,16 @@ def _run_asr_to_json(
             hotwords_default=hotwords_default,
         )
 
-    safe_chunk_seconds = min(chunk_seconds, GIGASTT_SAFE_SINGLE_FILE_SECONDS)
     chunks = _plan_asr_chunks(
         duration_seconds=audio_duration,
-        chunk_seconds=safe_chunk_seconds,
+        chunk_seconds=effective_chunk_seconds,
         cache_dir=cache_dir,
         output_dir=output_dir,
         stem=stem,
     )
     console.print(
         f"[cyan]ASR chunking:[/cyan] {len(chunks)} parts, "
-        f"up to {safe_chunk_seconds:.0f}s each for {audio_duration:.1f}s audio"
+        f"up to {effective_chunk_seconds:.0f}s each for {audio_duration:.1f}s audio"
     )
     total_engine_seconds = 0.0
     combined_words: list[GigasttWord] = []
@@ -346,6 +370,9 @@ def _run_asr_to_json(
             chunk.json_path,
             hotwords_file=hotwords_file,
             hotwords_default=hotwords_default,
+            chunk_seconds=effective_chunk_seconds,
+            chunk_start=chunk.start,
+            chunk_duration=chunk.duration,
         ):
             console.print(f"[yellow]Using ASR chunk JSON:[/yellow] {chunk.json_path}")
         else:
@@ -363,6 +390,9 @@ def _run_asr_to_json(
                 punct_model_dir=punct_model_dir,
                 hotwords_file=hotwords_file,
                 hotwords_default=hotwords_default,
+                chunk_seconds=effective_chunk_seconds,
+                chunk_start=chunk.start,
+                chunk_duration=chunk.duration,
             )
         chunk_result = load_result(chunk.json_path)
         if chunk_result.text:
@@ -376,7 +406,11 @@ def _run_asr_to_json(
             text=" ".join(part for part in text_parts if part).strip(),
             words=combined_words,
         ),
-        metadata=asr_json_metadata(hotwords_file=hotwords_file, hotwords_default=hotwords_default),
+        metadata=asr_json_metadata(
+            hotwords_file=hotwords_file,
+            hotwords_default=hotwords_default,
+            chunk_seconds=effective_chunk_seconds,
+        ),
     )
     console.print(f"[green]Combined ASR JSON:[/green] {asr_json}")
     return total_engine_seconds
@@ -618,11 +652,17 @@ def _run_pipeline_to_outputs(
         normalize_audio(source, audio_path, start=start, duration=duration)
         console.print(f"[green]Prepared audio:[/green] {audio_path}")
 
+    prepared_audio_duration = probe_audio(audio_path).duration_seconds
+    expected_asr_chunk_seconds = _effective_asr_chunk_seconds(
+        audio_duration=prepared_audio_duration,
+        chunk_seconds=asr_chunk_seconds,
+    )
     engine_seconds: float | None = None
     asr_json_current = asr_json.exists() and gigastt_json_matches_options(
         asr_json,
         hotwords_file=hotwords_file,
         hotwords_default=hotwords_default,
+        chunk_seconds=expected_asr_chunk_seconds,
     )
     if skip_existing and asr_json.exists() and asr_json_current:
         console.print(f"[yellow]Using ASR JSON:[/yellow] {asr_json}")
@@ -966,7 +1006,10 @@ def process_file(
     asr_chunk_seconds: float = typer.Option(
         DEFAULT_ASR_CHUNK_SECONDS,
         "--asr-chunk-seconds",
-        help="GigaSTT chunk size for files longer than the safe single-file limit. Use 0 to disable.",
+        help=(
+            "GigaSTT ASR chunk size. Shorter chunks keep punctuation/casing reliable; "
+            "0 disables quality chunking below the hard single-file limit."
+        ),
     ),
     max_gap_seconds: float = typer.Option(1.8, "--max-gap", help="Pause that starts a new segment."),
     smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),
@@ -1056,7 +1099,10 @@ def batch_process(
     asr_chunk_seconds: float = typer.Option(
         DEFAULT_ASR_CHUNK_SECONDS,
         "--asr-chunk-seconds",
-        help="GigaSTT chunk size for files longer than the safe single-file limit. Use 0 to disable.",
+        help=(
+            "GigaSTT ASR chunk size. Shorter chunks keep punctuation/casing reliable; "
+            "0 disables quality chunking below the hard single-file limit."
+        ),
     ),
     max_gap_seconds: float = typer.Option(1.8, "--max-gap", help="Pause that starts a new segment."),
     smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),

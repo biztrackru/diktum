@@ -68,7 +68,6 @@ CPU fallback:
 
 Связка GigaSTT + pyannote Community-1 на Apple MPS уже годится как рабочий локальный прототип для интервью и обучений. Самые полезные следующие доработки:
 
-- chunked punctuation для длинных файлов;
 - LLM-постобработка через LM Studio;
 - редактор speaker labels и текста;
 - DOCX/TXT экспорт.

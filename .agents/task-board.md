@@ -510,6 +510,33 @@ Checks:
 - fresh 5s `transcribe-gigastt` smoke writes current ASR metadata and remains punctuated;
 - synthetic diarization metadata smoke distinguishes current `2-12` from stale exact `2`.
 
+### Implementation Short ASR Chunks For Punctuation
+
+Status: DELIVERED (2026-06-27), Codex. Fix GigaSTT punctuation/casing loss on long ASR chunks.
+
+Scope:
+
+- `app/src/voice_recognizer/gigastt.py`
+- `app/src/voice_recognizer/cli.py`
+- `README.md`
+- `docs/diarization-baseline.md`
+- `docs/claude-audit-closure.md`
+- this `### Implementation Short ASR Chunks For Punctuation` block in `.agents/task-board.md`
+
+Goal:
+
+- stop using 3600-second ASR chunks as the default, because GigaSTT punctuation disappears on long chunks;
+- default to 600-second ASR chunks for files longer than 10 minutes;
+- include chunking parameters in ASR JSON metadata version 2;
+- include chunk start/duration in artifact file names so old hour-long chunk cache cannot be reused as a shorter chunk.
+
+Checks:
+
+- local smoke on `Модуль 3, день 2` showed punctuation/casing works at 60/180/300/600s and fails at 900s;
+- `.venv/bin/python -m compileall app/src docs/asr-benchmark/score.py`;
+- ASR chunk smoke produced `part-001_0s_600s` artifacts and combined punctuation;
+- old ASR JSON version 1 returns metadata mismatch.
+
 ## Next Implementation Tasks
 
 UX implementation (ready, from Claude UX track): полный бриф и copy-paste промпт — `.agents/next-task-ux-implementation.md`. Порядок порций: 1) F1+F2, 2) F3+F4, 3) F15+F16 (библиотека результатов из `outputs/`), 4) F5–F8, полировка F9–F14. Scope порций 1–2 — только `app/src/voice_recognizer/web.py`. Эталон — `docs/ux/voice-recognizer-prototype.html`, приёмка — `docs/ux-acceptance-scenarios.md`.

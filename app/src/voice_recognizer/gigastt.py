@@ -5,8 +5,8 @@ import math
 import re
 import subprocess
 import time
-from hashlib import sha256
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ class GigasttError(RuntimeError):
     pass
 
 
-ASR_JSON_VERSION = 1
+ASR_JSON_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -76,6 +76,9 @@ def run_gigastt(
     punct_model_dir: Path,
     hotwords_file: Path | None = None,
     hotwords_default: bool = False,
+    chunk_seconds: float | None = None,
+    chunk_start: float | None = None,
+    chunk_duration: float | None = None,
     log_level: str = "error",
 ) -> float:
     if not gigastt_bin.exists():
@@ -120,12 +123,25 @@ def run_gigastt(
         raise GigasttError(f"gigastt failed with exit code {result.returncode}{suffix}")
     annotate_gigastt_json(
         output_json,
-        asr_json_metadata(hotwords_file=hotwords_file, hotwords_default=hotwords_default),
+        asr_json_metadata(
+            hotwords_file=hotwords_file,
+            hotwords_default=hotwords_default,
+            chunk_seconds=chunk_seconds,
+            chunk_start=chunk_start,
+            chunk_duration=chunk_duration,
+        ),
     )
     return time.perf_counter() - started
 
 
-def asr_json_metadata(*, hotwords_file: Path | None, hotwords_default: bool) -> dict[str, Any]:
+def asr_json_metadata(
+    *,
+    hotwords_file: Path | None,
+    hotwords_default: bool,
+    chunk_seconds: float | None = None,
+    chunk_start: float | None = None,
+    chunk_duration: float | None = None,
+) -> dict[str, Any]:
     return {
         "asr_json_version": ASR_JSON_VERSION,
         "gigastt": {
@@ -134,6 +150,11 @@ def asr_json_metadata(*, hotwords_file: Path | None, hotwords_default: bool) -> 
             "hotwords_file": str(hotwords_file) if hotwords_file is not None else None,
             "hotwords_sha256": _file_sha256(hotwords_file) if hotwords_file is not None else None,
             "hotwords_default": hotwords_default,
+        },
+        "chunking": {
+            "chunk_seconds": _metadata_float(chunk_seconds),
+            "chunk_start": _metadata_float(chunk_start),
+            "chunk_duration": _metadata_float(chunk_duration),
         },
     }
 
@@ -152,6 +173,9 @@ def gigastt_json_matches_options(
     *,
     hotwords_file: Path | None,
     hotwords_default: bool,
+    chunk_seconds: float | None = None,
+    chunk_start: float | None = None,
+    chunk_duration: float | None = None,
 ) -> bool:
     try:
         payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
@@ -160,6 +184,9 @@ def gigastt_json_matches_options(
     return payload.get("voice_recognizer") == asr_json_metadata(
         hotwords_file=hotwords_file,
         hotwords_default=hotwords_default,
+        chunk_seconds=chunk_seconds,
+        chunk_start=chunk_start,
+        chunk_duration=chunk_duration,
     )
 
 
@@ -170,6 +197,12 @@ def _file_sha256(path: Path | None) -> str | None:
         return sha256(path.read_bytes()).hexdigest()
     except OSError:
         return None
+
+
+def _metadata_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(float(value), 3)
 
 
 def load_result(path: Path) -> GigasttResult:
