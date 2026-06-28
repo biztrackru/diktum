@@ -1,6 +1,6 @@
 # Voice Recognizer Agent Guide
 
-Дата: 2026-06-27.
+Дата: 2026-06-29.
 
 Этот файл обязателен для Codex, Claude Code и любых других AI-агентов, работающих в этом репозитории.
 
@@ -107,15 +107,19 @@ git diff --cached | rg --pcre2 -n "hf_(?!your_token_here)[A-Za-z0-9]{12,}|sk-[A-
 
 Актуальный порядок находится в `.agents/product-backlog.md`.
 
-Текущий P0 порядок:
+Текущий operational order:
 
-1. `P0-001 Mac Install Acceptance`.
-2. `P0-002 Durable Job Queue`.
-3. `P0-003 Long-File Resume And Progress`.
-4. `P0-004 Batch Reliability`.
-5. `P0-005 Engine Registry And Model Profiles`.
-6. `P0-006 Speaker Quality Improvement Loop`.
-7. `P0-007 Local Smoke Suite`.
+1. `P0-007 Local Smoke Suite`.
+2. `P0-010 Transcript Quality Repair And Postprocessing`.
+3. `P0-008 Installable Layout And Update-Safe Data Split`.
+4. `P0-009 Release Channel And Manual Updater`.
+5. `P0-002 Durable Job Queue`.
+6. `P0-003 Long-File Resume And Progress`.
+7. `P0-004 Batch Reliability`.
+8. `P0-005 Engine Registry And Model Profiles`.
+9. `P0-006 Speaker Quality Improvement Loop`.
+
+`P0-001 Mac Install Acceptance` delivered for the private trial; only regressions/packaging polish should be tracked there.
 
 Self-host/Docker/Cloud отложены до отдельного будущего этапа.
 

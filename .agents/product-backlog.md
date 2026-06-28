@@ -1,6 +1,6 @@
 # Product Backlog
 
-Дата актуализации: 2026-06-28.
+Дата актуализации: 2026-06-29.
 
 Этот файл - источник правды для следующих задач Codex, Claude Code и review-агентов. `.agents/task-board.md` остается журналом выполненных delivery-блоков и местом для активного claim, но приоритеты брать отсюда.
 
@@ -33,6 +33,7 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - Batch UX есть, но нуждается в надежной job persistence, resume и итоговом отчете по пачке.
 - Есть мелкие UX-замечания из spouse-Mac теста: поле `Имена спикеров` в настройках запуска преждевременно, верхний workflow stepper выглядит как шум.
 - Выбор движков в UI пока по сути один рабочий backend: GigaSTT/GigaAM v3. Whisper/Handy/Wisper/LM Studio не интегрированы как реальные engine profiles.
+- Итоговый текст иногда теряет смысл из-за ASR-ошибок, плохой пунктуации/регистра, склеек слов и разрывов одной фразы между спикерами; диагностика есть, но semantic repair и сравнение raw/edited результата не реализованы.
 - Диаризация получила диагностику, но не получила системный quality-improvement loop: сравнение конфигураций, улучшение speaker-islands, overlap/uncertain regions и приемочный benchmark.
 - Speaker labeling работает в рамках результата, но speaker memory / повторное узнавание людей по голосу отложено.
 - Нет компактного автоматизированного smoke/e2e набора на коротких безопасных fixtures, который можно гонять перед каждым релизным шагом.
@@ -149,6 +150,31 @@ Acceptance:
 - Одна команда проверяет shell syntax, Python compile, key CLI help, web render JS syntax.
 - Есть synthetic fixtures для manifest/result/speaker-quality без приватного аудио.
 - Smoke suite не требует network и не пишет в git-tracked paths.
+
+### P0-010 Transcript Quality Repair And Postprocessing
+
+Status: READY after `P0-007`. User-requested quality track; coordinate with `P0-005` and `P0-006`.
+
+Goal: получить качественный итоговый текст, в котором raw ASR остается доступным, а отдельный edited/repair слой исправляет пунктуацию, регистр, очевидные ASR-искажения, разрывы фраз между соседними сегментами и подозрительные места без выдумывания нового содержания.
+
+Scope:
+
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/web.py`
+- `app/src/voice_recognizer/engines.py`
+- new optional transcript repair helper/module
+- `docs/transcript-quality-repair.md`
+- synthetic fixtures and local-only private evaluation notes
+
+Acceptance:
+
+- Raw transcript and raw engine JSON are never overwritten; repaired text is exported separately, for example `*.edited.md`, `*.edited.txt`, `*.repair.json`.
+- Pipeline detects suspicious spans from ASR/speaker diagnostics, broken casing, all-caps artifacts, very short fragments, punctuation anomalies and speaker-island boundaries.
+- Repair uses surrounding context and preserves timestamps/speaker attribution; uncertain edits are marked rather than silently accepted.
+- Local LLM/text repair is optional and local-first, for example LM Studio OpenAI-compatible endpoint; no external text/audio call happens by default.
+- UI lets the user see that a result has raw and edited variants and open both.
+- A private local benchmark can compare selected problematic snippets against reference text without committing transcripts, audio or outputs.
+- Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 
 ### P0-008 Installable Layout And Update-Safe Data Split
 

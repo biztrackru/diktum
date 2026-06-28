@@ -1,6 +1,6 @@
 # Task Board
 
-Дата: 2026-06-28.
+Дата: 2026-06-29.
 
 Назначение: active claims, delivery journal, blockers and handoffs.
 
@@ -24,7 +24,7 @@ Definition of "normal local product":
 ## Active Branches
 
 - `main` - baseline.
-- `codex/ux-f1-f2` - current local work branch with UX/productization commits.
+- `security/hardening-2026-06-28` - current local branch with hardening/backlog follow-up commits.
 
 ## Active Claims
 
@@ -601,7 +601,7 @@ Checks:
 
 Remaining:
 
-- `P0-001` stays open until setup/doctor/start/stop are run on the target Mac and the result is recorded.
+- Historical note: at this point `P0-001` stayed open until setup/doctor/start/stop were run on the target Mac. Superseded on 2026-06-29: `P0-001` is now delivered for the private trial; see `.agents/product-backlog.md`.
 
 ### Codex - UX-P0-002 Compact Journal And Polling Efficiency
 
@@ -1330,19 +1330,52 @@ Checks:
 - `git diff --check`;
 - secret scan on staged diff.
 
+### Codex - P0-010 Backlog Sync And Transcript Quality Repair Planning
+
+Status: DELIVERED (2026-06-29), Codex. Remove task-order drift and promote transcript semantic quality into an explicit P0 track.
+
+Scope:
+
+- `.gitignore`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+- `AGENTS.md`
+- `docs/implementation-plan.md`
+- `docs/local-mac-product-plan.md`
+- `docs/transcript-quality-repair.md`
+
+Goal:
+
+- sync agent-facing P0 order after `P0-001` private-trial delivery;
+- stop stale planning docs from sending agents back to already-accepted Mac install work;
+- define the next quality-improvement track for raw vs edited transcript repair;
+- ignore the local private benchmark folder for future quality tests;
+- keep private transcript examples out of git.
+
+Checks:
+
+- documentation-only change;
+- no app code changed;
+- `git diff --check`;
+- staged secret scan before commit.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.
 
-Current P0 order:
+Current recommended order:
 
-1. `P0-001 Mac Install Acceptance`
-2. `P0-002 Durable Job Queue`
-3. `P0-003 Long-File Resume And Progress`
-4. `P0-004 Batch Reliability`
-5. `P0-005 Engine Registry And Model Profiles`
-6. `P0-006 Speaker Quality Improvement Loop`
-7. `P0-007 Local Smoke Suite`
+1. `P0-007 Local Smoke Suite`
+2. `P0-010 Transcript Quality Repair And Postprocessing`
+3. `P0-008 Installable Layout And Update-Safe Data Split`
+4. `P0-009 Release Channel And Manual Updater`
+5. `P0-002 Durable Job Queue`
+6. `P0-003 Long-File Resume And Progress`
+7. `P0-004 Batch Reliability`
+8. `P0-005 Engine Registry And Model Profiles`
+9. `P0-006 Speaker Quality Improvement Loop`
+
+`P0-001 Mac Install Acceptance` is delivered for the private trial. Keep only regressions/packaging polish there.
 
 The old Claude UX implementation list is completed enough for the current product stage and remains available as historical context in `.agents/next-task-ux-implementation.md`, `docs/ux-audit.md`, and `docs/ux-acceptance-scenarios.md`.
 

@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Дата: 2026-06-27.
+Дата: 2026-06-29.
 
 ## Ближайший фокус
 
@@ -8,7 +8,7 @@
 
 Исполняемый backlog с task ID, scope и acceptance criteria ведется в `.agents/product-backlog.md`. Этот документ остается стратегическим планом этапов.
 
-## Аудит состояния на 2026-06-27
+## Аудит состояния на 2026-06-29
 
 Сделано:
 
@@ -16,21 +16,23 @@
 - ASR chunking для длинных файлов GigaSTT;
 - UX F1-F16 из Claude-прототипа в основном перенесены;
 - start/stop/setup/doctor helpers существуют;
-- quality diagnostics для ASR и speaker fragmentation показываются в manifest/UI.
+- quality diagnostics для ASR и speaker fragmentation показываются в manifest/UI;
+- private trial на внешнем Mac пройден: setup, запуск, тестовая обработка, speaker names и артефакты проверены.
 
 Не закрыто полностью:
 
-- clean/semi-clean Mac install acceptance для обычного пользователя;
+- автоматический smoke suite перед новым trial/release pack;
+- installable/update-safe layout после private trial;
 - durable job queue после перезапуска сервера;
 - полноценный long-file resume/progress по chunks/stages;
 - надежный batch на многочасовые наборы;
 - общий engine registry и реальные дополнительные local ASR profiles;
-- улучшение диаризации, а не только диагностика ее проблем;
-- быстрый автоматический smoke suite без приватных аудио.
+- semantic repair итогового текста: пунктуация, регистр, явные ASR-искажения и сравнение raw/edited результата;
+- улучшение диаризации, а не только диагностика ее проблем.
 
 ## Этап 1. Надежная локальная база
 
-Статус: готово как baseline, но product acceptance вынесен в `P0-001`.
+Статус: готово как baseline; product acceptance для private trial закрыт в `P0-001`.
 
 - Зафиксировать безопасный первый git baseline.
 - Убедиться, что `.env`, аудио, кеши, модели и outputs не попадают в git.
@@ -46,7 +48,7 @@
 
 ## Этап 1.5. Локальная установка на Mac
 
-Статус: частично реализовано; финальная приемка и clean Mac сценарий вынесены в `P0-001 Mac Install Acceptance`.
+Статус: private trial acceptance закрыт в `P0-001 Mac Install Acceptance`; дальнейшая упаковка вынесена в `P0-008` и `P0-009`.
 
 Цель: пользователь без технического опыта может подготовить и запустить приложение через double-click файлы.
 
@@ -74,6 +76,12 @@ Research-gate перед реализацией:
 - setup либо исправляет окружение, либо дает конкретное действие;
 - после setup текущие `Запустить`/`Остановить` работают;
 - путь не требует ручного использования Terminal.
+
+Дальнейшие задачи:
+
+- `P0-007 Local Smoke Suite` перед новыми trial packs;
+- `P0-008 Installable Layout And Update-Safe Data Split`;
+- `P0-009 Release Channel And Manual Updater`.
 
 ## Этап 2. Импорт файлов и очередь
 
@@ -167,6 +175,28 @@ Research-gate перед реализацией:
 - speaker samples проигрываются полностью;
 - поле имени не очищается при потере фокуса/обновлении статуса;
 - для каждого файла корректно работает разное число спикеров.
+
+## Этап 5.5. Качество итогового текста и repair
+
+Статус: не реализовано как продуктовая возможность; см. `P0-010 Transcript Quality Repair And Postprocessing`.
+
+Цель: получить не только raw transcript, а качественный итоговый edited transcript с сохранением проверяемого исходника.
+
+Задачи:
+
+- оставить raw ASR/diarization артефакты неизменными;
+- находить подозрительные места по ASR diagnostics, speaker islands, странному регистру, поломанной пунктуации и коротким фрагментам;
+- чинить только отдельные span/window с контекстом, а не непрозрачно переписывать весь файл;
+- подключить локальный LLM/text-repair профиль, например через LM Studio, только как явный local-first режим;
+- поддержать targeted re-ASR на коротком окне или альтернативном движке, когда repair текста недостаточен;
+- экспортировать `raw`, `clean` и `edited` варианты отдельно;
+- не коммитить приватные эталонные фрагменты, аудио или transcripts.
+
+Готово, когда:
+
+- пользователь видит raw и edited варианты результата;
+- edits можно проверить по repair manifest/diff;
+- приватный benchmark на проблемных фрагментах показывает улучшение пунктуации, регистра и смысловой связности без потери timestamps/speaker labels.
 
 ## Этап 6. Self-host profile
 

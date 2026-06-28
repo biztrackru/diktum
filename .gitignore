@@ -16,6 +16,7 @@ __pycache__/
 *$py.class
 .agents/runs/
 .agents/tmp/
+.local-quality/
 *.docx
 !docs/**/*.docx
 ~$*.docx
