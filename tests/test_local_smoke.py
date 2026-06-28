@@ -79,6 +79,10 @@ def test_manifest_result_payload_quality_fixture() -> None:
         manifest_path = output_dir / "synthetic.manifest.json"
         repair_path = output_dir / "synthetic.repair.json"
         repair_path.write_text('{"repair_report_version":1}', encoding="utf-8")
+        edited_markdown = output_dir / "synthetic.edited.md"
+        edited_text = output_dir / "synthetic.edited.txt"
+        edited_markdown.write_text("# Edited\n", encoding="utf-8")
+        edited_text.write_text("Edited\n", encoding="utf-8")
         asr_quality = {
             "version": 1,
             "status": "warning",
@@ -135,6 +139,8 @@ def test_manifest_result_payload_quality_fixture() -> None:
         assert payload["asr_quality"] == asr_quality
         assert payload["speaker_quality"] == speaker_quality
         assert payload["files"][0]["key"] == "detailed_markdown"
+        assert any(file["key"] == "edited_markdown" for file in payload["files"])
+        assert any(file["key"] == "edited_text" for file in payload["files"])
         assert any(file["key"] == "repair_json" and file["url"].endswith("synthetic.repair.json") for file in payload["files"])
 
 

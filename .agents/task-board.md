@@ -1441,6 +1441,35 @@ Checks:
 - `PYTHONPATH=app/src .venv/bin/python tests/test_local_smoke.py`: 4/4 passed;
 - `app/scripts/smoke_local.sh`: multipart 6/6, local smoke 4/4, transcript repair 2/2.
 
+### Codex - P0-010 Portable Edited Exports
+
+Status: DELIVERED (2026-06-29), Codex. Add deterministic edited transcript exports without LM Studio or external services.
+
+Scope:
+
+- `app/src/voice_recognizer/transcript_repair.py`
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/web.py`
+- `tests/test_transcript_repair.py`
+- `tests/test_local_smoke.py`
+- `README.md`
+- `docs/transcript-quality-repair.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Goal:
+
+- `repair-quality` writes `*.repair.json`, `*.edited.md` and `*.edited.txt`;
+- edited renderer improves casing, punctuation spacing, common Russian hyphenation, `email`, obvious ASR junk/repeats and short speaker-islands;
+- raw ASR JSON, raw Markdown/TXT exports and manifest files remain unchanged;
+- web result links expose edited files when present.
+
+Checks:
+
+- `app/scripts/smoke_local.sh`: multipart 6/6, local smoke 4/4, transcript repair 4/4;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli repair-quality outputs/pipeline/Носников_дапринт_+_нфло.manifest.json --force`;
+- manual spot-check of `outputs/pipeline/Носников_дапринт_+_нфло.edited.md`: fixed `Е. Мейл`, `с генерится`, `из за`, `куда то`, `какую то`, repeated `по по` and standalone `пуб` artifacts in early sample.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.

@@ -38,7 +38,7 @@ from voice_recognizer.gigastt import (
     write_plain_text,
     write_readable_markdown,
 )
-from voice_recognizer.transcript_repair import build_repair_report, write_repair_report
+from voice_recognizer.transcript_repair import build_repair_report, write_edited_exports, write_repair_report
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -662,6 +662,7 @@ def _write_manifest_repair_report(
     manifest_path: Path,
     *,
     force: bool = False,
+    write_edited: bool = True,
     max_gap_seconds: float = 1.8,
     smooth_speakers: bool = True,
     speaker_island_max_words: int = 2,
@@ -676,7 +677,9 @@ def _write_manifest_repair_report(
         raise ValueError("manifest is not a JSON object")
 
     repair_path = _repair_report_path(manifest_path)
-    if repair_path.exists() and not force:
+    edited_markdown_path, edited_text_path = _edited_export_paths(manifest_path)
+    edited_missing = write_edited and (not edited_markdown_path.exists() or not edited_text_path.exists())
+    if repair_path.exists() and not edited_missing and not force:
         return "skipped", repair_path, 0
 
     asr_json = _manifest_artifact_path(manifest_path, manifest.get("asr_json"), required=True)
@@ -709,6 +712,14 @@ def _write_manifest_repair_report(
         speaker_names=_manifest_speaker_names(manifest),
     )
     write_repair_report(repair_path, report)
+    if write_edited:
+        write_edited_exports(
+            markdown_path=edited_markdown_path,
+            text_path=edited_text_path,
+            title=_manifest_source_label(manifest, manifest_path),
+            segments=segments,
+            speaker_names=_manifest_speaker_names(manifest),
+        )
     summary = report.get("summary")
     span_count = int(summary.get("suspicious_span_count", 0)) if isinstance(summary, dict) else 0
     return "updated", repair_path, span_count
@@ -719,6 +730,14 @@ def _repair_report_path(manifest_path: Path) -> Path:
     if name.endswith(".manifest.json"):
         return manifest_path.with_name(name.removesuffix(".manifest.json") + ".repair.json")
     return manifest_path.with_suffix(".repair.json")
+
+
+def _edited_export_paths(manifest_path: Path) -> tuple[Path, Path]:
+    name = manifest_path.name
+    if name.endswith(".manifest.json"):
+        stem = name.removesuffix(".manifest.json")
+        return manifest_path.with_name(f"{stem}.edited.md"), manifest_path.with_name(f"{stem}.edited.txt")
+    return manifest_path.with_suffix(".edited.md"), manifest_path.with_suffix(".edited.txt")
 
 
 def _manifest_source_label(manifest: dict[str, object], manifest_path: Path) -> str:
@@ -1310,6 +1329,11 @@ def repair_quality(
     target: Path = typer.Argument(..., exists=True, readable=True),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Search directories recursively."),
     force: bool = typer.Option(False, "--force", help="Rewrite existing repair reports."),
+    write_edited: bool = typer.Option(
+        True,
+        "--edited-export/--no-edited-export",
+        help="Write deterministic *.edited.md and *.edited.txt exports next to the repair report.",
+    ),
     max_gap_seconds: float = typer.Option(1.8, "--max-gap"),
     smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),
     speaker_island_max_words: int = typer.Option(2, "--speaker-island-max-words"),
@@ -1326,6 +1350,7 @@ def repair_quality(
     table.add_column("Manifest")
     table.add_column("Status")
     table.add_column("Spans")
+    table.add_column("Edited")
     table.add_column("Report")
     updated = 0
     failed = 0
@@ -1335,6 +1360,7 @@ def repair_quality(
             status, repair_path, span_count = _write_manifest_repair_report(
                 manifest_path,
                 force=force,
+                write_edited=write_edited,
                 max_gap_seconds=max_gap_seconds,
                 smooth_speakers=smooth_speakers,
                 speaker_island_max_words=speaker_island_max_words,
@@ -1343,14 +1369,14 @@ def repair_quality(
             )
         except ValueError as error:
             failed += 1
-            table.add_row(str(manifest_path), "error", "-", str(error))
+            table.add_row(str(manifest_path), "error", "-", "-", str(error))
             continue
         if status == "updated":
             updated += 1
-            table.add_row(str(manifest_path), "updated", str(span_count), str(repair_path))
+            table.add_row(str(manifest_path), "updated", str(span_count), "yes" if write_edited else "no", str(repair_path))
         else:
             skipped += 1
-            table.add_row(str(manifest_path), "skipped", "-", str(repair_path))
+            table.add_row(str(manifest_path), "skipped", "-", "yes" if write_edited else "no", str(repair_path))
     console.print(table)
     console.print(f"[cyan]Updated: {updated}, skipped: {skipped}, failed: {failed}.[/cyan]")
 

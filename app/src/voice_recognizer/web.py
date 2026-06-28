@@ -4376,6 +4376,11 @@ def _manifest_files(manifest: dict[str, object], root: Path, *, manifest_path: P
         if path.exists():
             files.append({"key": key, "label": label, "url": _output_url(root, path) or ""})
     if manifest_path is not None:
+        edited_markdown_path, edited_text_path = _edited_export_paths(manifest_path)
+        if edited_markdown_path.exists() and not any(file.get("key") == "edited_markdown" for file in files):
+            files.append({"key": "edited_markdown", "label": "Edited Markdown", "url": _output_url(root, edited_markdown_path) or ""})
+        if edited_text_path.exists() and not any(file.get("key") == "edited_text" for file in files):
+            files.append({"key": "edited_text", "label": "Edited TXT", "url": _output_url(root, edited_text_path) or ""})
         repair_path = _repair_report_path(manifest_path)
         if repair_path.exists() and not any(file.get("key") == "repair_json" for file in files):
             files.append({"key": "repair_json", "label": "Repair JSON", "url": _output_url(root, repair_path) or ""})
@@ -4387,6 +4392,14 @@ def _repair_report_path(manifest_path: Path) -> Path:
     if name.endswith(".manifest.json"):
         return manifest_path.with_name(name.removesuffix(".manifest.json") + ".repair.json")
     return manifest_path.with_suffix(".repair.json")
+
+
+def _edited_export_paths(manifest_path: Path) -> tuple[Path, Path]:
+    name = manifest_path.name
+    if name.endswith(".manifest.json"):
+        stem = name.removesuffix(".manifest.json")
+        return manifest_path.with_name(f"{stem}.edited.md"), manifest_path.with_name(f"{stem}.edited.txt")
+    return manifest_path.with_suffix(".edited.md"), manifest_path.with_suffix(".edited.txt")
 
 
 def _manifest_samples(manifest: dict[str, object], root: Path) -> list[dict[str, str]]:

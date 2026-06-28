@@ -106,8 +106,8 @@ Scoring should track:
 
 1. Done: add a `repair-quality` CLI command that reads existing manifests and transcripts and produces `*.repair.json` with detected suspicious spans only.
 2. Done: add synthetic tests for span detection without private data.
-3. Add edited export generation for punctuation/casing repair with a deterministic local rule-based baseline.
+3. Done: add edited export generation for punctuation/casing repair with a deterministic local rule-based baseline.
 4. Add optional LM Studio repair profile behind explicit config.
-5. Add UI affordance to open raw, clean and edited files separately.
+5. Partly done: UI result links expose sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when present.
 
 This order gives us a safe baseline before asking a neural model to rewrite anything.

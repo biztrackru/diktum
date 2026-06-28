@@ -152,7 +152,7 @@ Acceptance:
 
 ### P0-010 Transcript Quality Repair And Postprocessing
 
-Status: READY. First diagnostic slice delivered on 2026-06-29; edited exports, UI and local LLM/targeted re-ASR remain open. Highest current quality priority; coordinate with `P0-005` and `P0-006`.
+Status: READY. Diagnostic and deterministic edited-export slices delivered on 2026-06-29; local LLM/targeted re-ASR remain open. Highest current quality priority; coordinate with `P0-005` and `P0-006`.
 
 Goal: получить качественный итоговый текст, в котором raw ASR остается доступным, а отдельный edited/repair слой исправляет пунктуацию, регистр, очевидные ASR-искажения, разрывы фраз между соседними сегментами и подозрительные места без выдумывания нового содержания.
 
@@ -169,11 +169,11 @@ Acceptance:
 
 - Delivered first slice: raw transcript, manifest and raw engine JSON are not overwritten; `repair-quality` writes separate `*.repair.json`.
 - Delivered first slice: pipeline detects suspicious spans from ASR/speaker diagnostics, broken casing, all-caps artifacts, very short fragments, punctuation anomalies and speaker-island boundaries.
-- Repaired text is exported separately, for example `*.edited.md`, `*.edited.txt`, `*.repair.json`.
+- Delivered first edited slice: repaired text is exported separately as `*.edited.md`, `*.edited.txt`, `*.repair.json`.
 - Repair uses surrounding context and preserves timestamps/speaker attribution; uncertain edits are marked rather than silently accepted.
 - Local LLM/text repair is optional and local-first, for example LM Studio OpenAI-compatible endpoint; no external text/audio call happens by default.
-- Delivered first slice: UI result file links include sibling `*.repair.json` when a repair report exists.
-- UI lets the user see that a result has raw and edited variants and open both.
+- Delivered first slice: UI result file links include sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when they exist.
+- UI lets the user see richer raw/clean/edited status and compare variants directly.
 - A private local benchmark can compare selected problematic snippets against reference text without committing transcripts, audio or outputs.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 

@@ -365,13 +365,13 @@ set +a
 .venv/bin/voice-recognizer refresh-quality outputs/pipeline
 ```
 
-Чтобы найти места, где итоговый текст стоит проверить или чинить отдельным repair-проходом, можно построить диагностические отчеты без повторного ASR/диаризации:
+Чтобы найти места, где итоговый текст стоит проверить или чинить отдельным repair-проходом, можно построить диагностические отчеты и portable edited exports без повторного ASR/диаризации:
 
 ```bash
 .venv/bin/voice-recognizer repair-quality outputs/pipeline --recursive
 ```
 
-Команда создает отдельные `*.repair.json` рядом с manifest-файлами. Raw ASR JSON, Markdown/TXT exports и сами manifest не перезаписываются.
+Команда создает отдельные `*.repair.json`, `*.edited.md` и `*.edited.txt` рядом с manifest-файлами. Raw ASR JSON, Markdown/TXT exports и сами manifest не перезаписываются.
 
 Batch-обработка папки с разделением по спикерам:
 

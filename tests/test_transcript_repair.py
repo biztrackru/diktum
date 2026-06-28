@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app" / "src"))
 
 from voice_recognizer.gigastt import GigasttSegment  # noqa: E402
-from voice_recognizer.transcript_repair import detect_suspicious_spans  # noqa: E402
+from voice_recognizer.transcript_repair import detect_suspicious_spans, normalize_text, render_edited_segments  # noqa: E402
 import voice_recognizer.cli as cli  # noqa: E402
 
 
@@ -35,6 +35,23 @@ def test_detect_suspicious_spans_from_quality_and_speaker_island() -> None:
     assert "all_caps_token" in reasons
     assert "speaker_island" in reasons
     assert any(span.severity == "high" for span in spans)
+
+
+def test_normalize_text_portable_cleanup() -> None:
+    text = "е. мейл нужен для того, чтоб по по пуберт туда прислать отчет который с генерится из за формы"
+    assert normalize_text(text) == "Email нужен для того, чтоб по туда прислать отчет который сгенерится из-за формы."
+
+
+def test_render_edited_segments_reassigns_short_speaker_island() -> None:
+    segments = [
+        GigasttSegment(0.0, 3.0, 0, "это длинная мысль"),
+        GigasttSegment(3.1, 3.5, 1, "да"),
+        GigasttSegment(3.6, 6.0, 0, "которая продолжается"),
+    ]
+    edited = render_edited_segments(segments)
+    assert len(edited) == 1
+    assert edited[0].speaker == 0
+    assert "да которая" in edited[0].text
 
 
 def test_write_manifest_repair_report_does_not_mutate_manifest() -> None:
@@ -91,6 +108,8 @@ def test_write_manifest_repair_report_does_not_mutate_manifest() -> None:
         assert span_count >= 1
         assert repair_path == output_dir / "synthetic.repair.json"
         assert manifest_path.read_text(encoding="utf-8") == before
+        assert (output_dir / "synthetic.edited.md").exists()
+        assert (output_dir / "synthetic.edited.txt").exists()
         report = json.loads(repair_path.read_text(encoding="utf-8"))
         assert report["mode"] == "diagnostic-only"
         assert report["summary"]["suspicious_span_count"] == span_count
