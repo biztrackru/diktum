@@ -152,7 +152,7 @@ Acceptance:
 
 ### P0-010 Transcript Quality Repair And Postprocessing
 
-Status: READY. Highest current quality priority; coordinate with `P0-005` and `P0-006`.
+Status: READY. First diagnostic slice delivered on 2026-06-29; edited exports, UI and local LLM/targeted re-ASR remain open. Highest current quality priority; coordinate with `P0-005` and `P0-006`.
 
 Goal: получить качественный итоговый текст, в котором raw ASR остается доступным, а отдельный edited/repair слой исправляет пунктуацию, регистр, очевидные ASR-искажения, разрывы фраз между соседними сегментами и подозрительные места без выдумывания нового содержания.
 
@@ -167,8 +167,9 @@ Scope:
 
 Acceptance:
 
-- Raw transcript and raw engine JSON are never overwritten; repaired text is exported separately, for example `*.edited.md`, `*.edited.txt`, `*.repair.json`.
-- Pipeline detects suspicious spans from ASR/speaker diagnostics, broken casing, all-caps artifacts, very short fragments, punctuation anomalies and speaker-island boundaries.
+- Delivered first slice: raw transcript, manifest and raw engine JSON are not overwritten; `repair-quality` writes separate `*.repair.json`.
+- Delivered first slice: pipeline detects suspicious spans from ASR/speaker diagnostics, broken casing, all-caps artifacts, very short fragments, punctuation anomalies and speaker-island boundaries.
+- Repaired text is exported separately, for example `*.edited.md`, `*.edited.txt`, `*.repair.json`.
 - Repair uses surrounding context and preserves timestamps/speaker attribution; uncertain edits are marked rather than silently accepted.
 - Local LLM/text repair is optional and local-first, for example LM Studio OpenAI-compatible endpoint; no external text/audio call happens by default.
 - UI lets the user see that a result has raw and edited variants and open both.

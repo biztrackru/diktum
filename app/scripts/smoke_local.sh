@@ -69,11 +69,13 @@ run_quiet "$PYTHON" -m voice_recognizer.cli --help
 run_quiet "$PYTHON" -m voice_recognizer.cli process --help
 run_quiet "$PYTHON" -m voice_recognizer.cli batch-process --help
 run_quiet "$PYTHON" -m voice_recognizer.cli refresh-quality --help
+run_quiet "$PYTHON" -m voice_recognizer.cli repair-quality --help
 run_quiet "$PYTHON" -m voice_recognizer.cli web --help
 
 section "Synthetic fixtures"
 run "$PYTHON" tests/test_multipart.py
 run "$PYTHON" tests/test_local_smoke.py
+run "$PYTHON" tests/test_transcript_repair.py
 
 section "Done"
 echo "Local smoke suite passed."

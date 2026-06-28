@@ -1390,6 +1390,35 @@ Checks:
 - included `tests/test_local_smoke.py` direct run: 4/4 passed;
 - included web render JS syntax via `node --check` on temp extracted inline script.
 
+### Codex - P0-010 Repair Quality First Slice
+
+Status: DELIVERED (2026-06-29), Codex. Add diagnostic repair reports for existing manifests without rerunning ASR/diarization.
+
+Scope:
+
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/transcript_repair.py`
+- `tests/test_transcript_repair.py`
+- `app/scripts/smoke_local.sh`
+- `README.md`
+- `docs/transcript-quality-repair.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Goal:
+
+- add `repair-quality` CLI command;
+- write separate `*.repair.json` reports next to manifest files;
+- detect suspicious spans from ASR/speaker diagnostics, broken casing/punctuation, all-caps artifacts and speaker islands;
+- keep raw ASR JSON, Markdown/TXT exports and manifest files unchanged.
+
+Checks:
+
+- `PYTHONPATH=app/src .venv/bin/python tests/test_transcript_repair.py`: 2/2 passed;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli repair-quality --help`;
+- `PYTHONPATH=app/src .venv/bin/python -m compileall app/src tests`;
+- `app/scripts/smoke_local.sh`: includes `repair-quality --help`, multipart 6/6, local smoke 4/4, transcript repair 2/2.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.

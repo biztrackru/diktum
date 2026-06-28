@@ -38,6 +38,7 @@ from voice_recognizer.gigastt import (
     write_plain_text,
     write_readable_markdown,
 )
+from voice_recognizer.transcript_repair import build_repair_report, write_repair_report
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -657,6 +658,92 @@ def _refresh_manifest_quality(
     return "updated"
 
 
+def _write_manifest_repair_report(
+    manifest_path: Path,
+    *,
+    force: bool = False,
+    max_gap_seconds: float = 1.8,
+    smooth_speakers: bool = True,
+    speaker_island_max_words: int = 2,
+    speaker_island_max_seconds: float = 1.2,
+    speaker_bridge_gap_seconds: float = 0.8,
+) -> tuple[str, Path, int]:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read manifest: {error}") from error
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest is not a JSON object")
+
+    repair_path = _repair_report_path(manifest_path)
+    if repair_path.exists() and not force:
+        return "skipped", repair_path, 0
+
+    asr_json = _manifest_artifact_path(manifest_path, manifest.get("asr_json"), required=True)
+    diarization_json = _manifest_artifact_path(manifest_path, manifest.get("diarization_json"), required=False)
+    result = load_result(asr_json)
+    result_for_speakers = result
+    if diarization_json is not None:
+        result_for_speakers = assign_speakers(
+            result,
+            load_diarization_json(diarization_json),
+            smooth=smooth_speakers,
+            island_max_words=speaker_island_max_words,
+            island_max_seconds=speaker_island_max_seconds,
+            bridge_gap_seconds=speaker_bridge_gap_seconds,
+        )
+    segments = segment_words(result_for_speakers.words, max_gap_seconds=max_gap_seconds)
+    asr_quality = manifest.get("asr_quality") if isinstance(manifest.get("asr_quality"), dict) else analyze_asr_quality(result)
+    speaker_quality = (
+        manifest.get("speaker_quality")
+        if isinstance(manifest.get("speaker_quality"), dict)
+        else analyze_speaker_quality(segments)
+    )
+    report = build_repair_report(
+        manifest_path=manifest_path,
+        source_name=_manifest_source_label(manifest, manifest_path),
+        asr_engine=str(manifest.get("asr_engine") or ""),
+        segments=segments,
+        asr_quality=asr_quality,
+        speaker_quality=speaker_quality,
+        speaker_names=_manifest_speaker_names(manifest),
+    )
+    write_repair_report(repair_path, report)
+    summary = report.get("summary")
+    span_count = int(summary.get("suspicious_span_count", 0)) if isinstance(summary, dict) else 0
+    return "updated", repair_path, span_count
+
+
+def _repair_report_path(manifest_path: Path) -> Path:
+    name = manifest_path.name
+    if name.endswith(".manifest.json"):
+        return manifest_path.with_name(name.removesuffix(".manifest.json") + ".repair.json")
+    return manifest_path.with_suffix(".repair.json")
+
+
+def _manifest_source_label(manifest: dict[str, object], manifest_path: Path) -> str:
+    source = manifest.get("source")
+    if source:
+        return Path(str(source).replace("\\", "/")).name
+    return manifest_path.name.removesuffix(".manifest.json")
+
+
+def _manifest_speaker_names(manifest: dict[str, object]) -> dict[int, str]:
+    raw = manifest.get("speaker_names")
+    if not isinstance(raw, dict):
+        return {}
+    names: dict[int, str] = {}
+    for key, value in raw.items():
+        try:
+            speaker_index = int(str(key)) - 1
+        except ValueError:
+            continue
+        name = str(value).strip()
+        if speaker_index >= 0 and name:
+            names[speaker_index] = name
+    return names
+
+
 def _manifest_artifact_path(manifest_path: Path, value: object, *, required: bool) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         if required:
@@ -1214,6 +1301,56 @@ def refresh_quality(
         else:
             skipped += 1
             table.add_row(str(manifest_path), "skipped", "quality fields already present")
+    console.print(table)
+    console.print(f"[cyan]Updated: {updated}, skipped: {skipped}, failed: {failed}.[/cyan]")
+
+
+@app.command("repair-quality")
+def repair_quality(
+    target: Path = typer.Argument(..., exists=True, readable=True),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Search directories recursively."),
+    force: bool = typer.Option(False, "--force", help="Rewrite existing repair reports."),
+    max_gap_seconds: float = typer.Option(1.8, "--max-gap"),
+    smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),
+    speaker_island_max_words: int = typer.Option(2, "--speaker-island-max-words"),
+    speaker_island_max_seconds: float = typer.Option(1.2, "--speaker-island-max-seconds"),
+    speaker_bridge_gap_seconds: float = typer.Option(0.8, "--speaker-bridge-gap"),
+) -> None:
+    """Create diagnostic repair reports from existing manifests."""
+    manifests = _iter_manifest_paths(target, recursive=recursive)
+    if not manifests:
+        console.print(f"[yellow]No manifest files found in {target}.[/yellow]")
+        return
+
+    table = Table(title="Transcript Repair Diagnostics")
+    table.add_column("Manifest")
+    table.add_column("Status")
+    table.add_column("Spans")
+    table.add_column("Report")
+    updated = 0
+    failed = 0
+    skipped = 0
+    for manifest_path in manifests:
+        try:
+            status, repair_path, span_count = _write_manifest_repair_report(
+                manifest_path,
+                force=force,
+                max_gap_seconds=max_gap_seconds,
+                smooth_speakers=smooth_speakers,
+                speaker_island_max_words=speaker_island_max_words,
+                speaker_island_max_seconds=speaker_island_max_seconds,
+                speaker_bridge_gap_seconds=speaker_bridge_gap_seconds,
+            )
+        except ValueError as error:
+            failed += 1
+            table.add_row(str(manifest_path), "error", "-", str(error))
+            continue
+        if status == "updated":
+            updated += 1
+            table.add_row(str(manifest_path), "updated", str(span_count), str(repair_path))
+        else:
+            skipped += 1
+            table.add_row(str(manifest_path), "skipped", "-", str(repair_path))
     console.print(table)
     console.print(f"[cyan]Updated: {updated}, skipped: {skipped}, failed: {failed}.[/cyan]")
 
