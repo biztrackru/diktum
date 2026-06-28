@@ -132,6 +132,48 @@ ensure_punct_model() {
   download_checked_file "tokenizer.json" "7ca617388c2092a3a84272025c52bbf3c6db0aee225c0351186295c0b5d3ddc6"
 }
 
+# Optional integrity pinning for the main GigaAM v3 model files. They are fetched
+# by the gigastt binary (over HTTPS) and are NOT checksum-pinned by default. To
+# enable verification: run setup once, copy each printed [UNPINNED] hash into the
+# matching entry below, and commit the change.
+declare -A EXPECTED_MODEL_SHA256=(
+  ["v3_rnnt_encoder_int8.onnx"]=""
+  ["v3_rnnt_decoder.onnx"]=""
+  ["v3_rnnt_joint.onnx"]=""
+  ["v3_vocab.txt"]=""
+)
+
+verify_model_checksums() {
+  echo
+  echo "Проверка целостности основных моделей GigaAM v3..."
+  local name path actual expected unpinned=0
+  for name in "${!EXPECTED_MODEL_SHA256[@]}"; do
+    path="${MODEL_DIR}/${name}"
+    if [[ ! -f "$path" ]]; then
+      continue
+    fi
+    actual="$(sha256_file "$path")"
+    expected="${EXPECTED_MODEL_SHA256[$name]}"
+    if [[ -z "$expected" ]]; then
+      echo "  [UNPINNED] ${name}: ${actual}"
+      unpinned=1
+    elif [[ "$actual" == "$expected" ]]; then
+      echo "  [OK] ${name}"
+    else
+      echo "  [FAIL] ${name}: SHA-256 mismatch" >&2
+      echo "    expected: ${expected}" >&2
+      echo "    actual:   ${actual}" >&2
+      return 1
+    fi
+  done
+  if [[ "$unpinned" == "1" ]]; then
+    echo "  ВНИМАНИЕ: основные модели не запинены по SHA-256."
+    echo "  Вставьте напечатанные значения в EXPECTED_MODEL_SHA256 в этом скрипте,"
+    echo "  чтобы включить проверку целостности при будущих установках."
+  fi
+  return 0
+}
+
 cat <<TXT
 GigaSTT / GigaAM v3 setup
 -------------------------
@@ -179,6 +221,8 @@ ensure_punct_model
 # the INT8 encoder when both names exist, so this symlink avoids a redundant
 # 844 MB FP32 download.
 ln -sf v3_rnnt_encoder_int8.onnx "${MODEL_DIR}/v3_rnnt_encoder.onnx"
+
+verify_model_checksums
 
 print_gigastt_inventory
 verify_gigastt_ready

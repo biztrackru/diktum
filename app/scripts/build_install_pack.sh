@@ -173,6 +173,7 @@ Included:
 - app/pyproject.toml
 - app/.env.example
 - README.md
+- LICENSE and SECURITY.md
 - selected docs
 - empty Inbox/
 - empty outputs/
@@ -205,6 +206,8 @@ copy_file "Настроить Voice Recognizer.command" "$PACK_DIR/Настро�
 copy_file "Запустить Voice Recognizer.command" "$PACK_DIR/Запустить Voice Recognizer.command"
 copy_file "Остановить Voice Recognizer.command" "$PACK_DIR/Остановить Voice Recognizer.command"
 copy_file "README.md" "$PACK_DIR/README.md"
+copy_file "LICENSE" "$PACK_DIR/LICENSE"
+copy_file "SECURITY.md" "$PACK_DIR/SECURITY.md"
 
 copy_file "app/pyproject.toml" "$PACK_DIR/app/pyproject.toml"
 copy_file "app/.env.example" "$PACK_DIR/app/.env.example"

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import cgi
 import hashlib
 import html
 import json
@@ -20,10 +19,32 @@ from urllib.parse import quote, unquote, urlparse
 
 from voice_recognizer.audio import SUPPORTED_MEDIA_EXTENSIONS, iter_media_files, safe_stem
 from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, normalize_asr_engine
+from voice_recognizer.multipart import FilePart, MultipartError, stream_form_files
 
 
 MAX_LOG_LINES = 500
 SOURCE_FRESHNESS_TOLERANCE_SECONDS = 2.0
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+# Security limits (overridable via environment variables).
+# JSON request bodies are tiny control messages; cap them hard.
+MAX_JSON_BODY_BYTES = _env_int("VOICE_RECOGNIZER_MAX_JSON_KB", 1024) * 1024
+# Uploaded media can be large, but must still be bounded to avoid filling the disk.
+MAX_UPLOAD_BYTES = _env_int("VOICE_RECOGNIZER_MAX_UPLOAD_MB", 4096) * 1024 * 1024
+# Hostnames that are always considered local. The configured bind host is added
+# at request time. Used to block DNS-rebinding and cross-origin (CSRF) requests.
+LOCAL_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})
 JOBS: dict[str, "Job"] = {}
 JOB_QUEUE: list[str] = []
 RUNNING_PROCESSES: dict[str, subprocess.Popen[str]] = {}
@@ -89,6 +110,15 @@ def run_web_server(
 
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"Voice Recognizer web UI: http://{host}:{port}", flush=True)
+    if str(host).strip().lower() not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            "[WARNING] The server is bound to a non-local address "
+            f"({host}). It has no authentication and is intended for local "
+            "single-user use only. Anyone who can reach this address on the "
+            "network can read and submit transcriptions. Bind to 127.0.0.1 "
+            "unless you fully trust the network.",
+            flush=True,
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -103,6 +133,47 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
 
+    # --- Security guards -------------------------------------------------
+    # The server is designed for local single-user use and has no auth, so we
+    # defend the browser threat surface explicitly:
+    #   * Host allowlist  -> blocks DNS-rebinding (a malicious site rebinding
+    #     its domain to 127.0.0.1 to read local transcripts).
+    #   * Origin/Sec-Fetch-Site checks on mutating methods -> block CSRF.
+    def _local_hostnames(self) -> set[str]:
+        allowed = set(LOCAL_HOSTNAMES)
+        allowed.add(str(self.web_config.host).strip().strip("[]").lower())
+        return allowed
+
+    def _host_allowed(self) -> bool:
+        host_header = self.headers.get("Host")
+        if not host_header:
+            return True  # Non-browser clients (curl/HTTP1.0) may omit Host.
+        hostname = host_header.rsplit(":", 1)[0].strip().strip("[]").lower()
+        return hostname in self._local_hostnames()
+
+    def _origin_allowed(self) -> bool:
+        if (self.headers.get("Sec-Fetch-Site") or "").strip().lower() == "cross-site":
+            return False
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True  # Same-origin requests and non-browser clients send none.
+        try:
+            hostname = (urlparse(origin).hostname or "").strip().strip("[]").lower()
+        except ValueError:
+            return False
+        return hostname in self._local_hostnames()
+
+    def _guard(self, *, mutating: bool) -> bool:
+        if not self._host_allowed():
+            self._send_json({"error": "host not allowed"}, status=HTTPStatus.FORBIDDEN)
+            return False
+        if mutating and not self._origin_allowed():
+            self._send_json(
+                {"error": "cross-origin request blocked"}, status=HTTPStatus.FORBIDDEN
+            )
+            return False
+        return True
+
     def do_GET(self) -> None:
         self._handle_get_or_head(head_only=False)
 
@@ -110,6 +181,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         self._handle_get_or_head(head_only=True)
 
     def _handle_get_or_head(self, *, head_only: bool) -> None:
+        if not self._guard(mutating=False):
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/favicon.ico":
             self.send_response(HTTPStatus.NO_CONTENT)
@@ -143,6 +216,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND, head_only=head_only)
 
     def do_POST(self) -> None:
+        if not self._guard(mutating=True):
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/uploads":
             try:
@@ -240,6 +315,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         self._send_json(_job_payload(job, self.web_config.root), status=HTTPStatus.CREATED)
 
     def do_DELETE(self) -> None:
+        if not self._guard(mutating=True):
+            return
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/jobs/"):
             job_id = parsed.path.removeprefix("/api/jobs/").split("/", 1)[0].strip("/")
@@ -3429,7 +3506,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             self.send_header("Accept-Ranges", "bytes")
             self.end_headers()
             if not head_only:
-                self.wfile.write(target.read_bytes())
+                with target.open("rb") as file:
+                    shutil.copyfileobj(file, self.wfile)
             return
 
         start, end = byte_range
@@ -3445,8 +3523,25 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                 file.seek(start)
                 self.wfile.write(file.read(length))
 
+    def _content_length(self) -> int:
+        raw = self.headers.get("Content-Length")
+        if raw is None:
+            return 0
+        try:
+            length = int(raw)
+        except ValueError as error:
+            raise ValueError("invalid Content-Length") from error
+        if length < 0:
+            raise ValueError("invalid Content-Length")
+        return length
+
     def _read_json_body(self) -> dict[str, object]:
-        length = int(self.headers.get("Content-Length") or "0")
+        content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if content_type and content_type != "application/json":
+            raise ValueError("Content-Type must be application/json")
+        length = self._content_length()
+        if length > MAX_JSON_BODY_BYTES:
+            raise ValueError("request body is too large")
         body = self.rfile.read(length).decode("utf-8")
         payload = json.loads(body or "{}")
         if not isinstance(payload, dict):
@@ -3457,32 +3552,34 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         content_type = self.headers.get("Content-Type") or ""
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("upload must use multipart/form-data")
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
-        fields = form["files"] if "files" in form else []
-        if not isinstance(fields, list):
-            fields = [fields]
+        length = self._content_length()
+        if length > MAX_UPLOAD_BYTES:
+            raise ValueError("upload exceeds the maximum allowed size")
         self.web_config.inbox.mkdir(parents=True, exist_ok=True)
-        uploads = []
-        for field in fields:
-            filename = getattr(field, "filename", None)
-            if not filename:
-                continue
-            target = _unique_inbox_path(self.web_config.inbox, filename)
-            uploads.append((field, target))
-        if not uploads:
+
+        def open_target(part: FilePart):
+            # Reject unsupported/oversized names before opening anything on disk.
+            target = _unique_inbox_path(self.web_config.inbox, part.filename)
+            handle = target.open("wb")
+
+            def finalize(size: int) -> dict[str, object]:
+                return _inbox_file_payload(target)
+
+            return handle, finalize
+
+        try:
+            saved = stream_form_files(
+                self.rfile,
+                content_type=content_type,
+                content_length=length,
+                max_bytes=MAX_UPLOAD_BYTES,
+                field_name="files",
+                open_target=open_target,
+            )
+        except MultipartError as error:
+            raise ValueError(str(error)) from error
+        if not saved:
             raise ValueError("no supported files uploaded")
-        saved = []
-        for field, target in uploads:
-            with target.open("wb") as output:
-                shutil.copyfileobj(field.file, output)
-            saved.append(_inbox_file_payload(target))
         return saved
 
     def _send_html(self, body: str, status: HTTPStatus = HTTPStatus.OK, *, head_only: bool = False) -> None:
@@ -4007,7 +4104,14 @@ def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) 
         text=True,
     )
     if process.returncode != 0:
-        raise ValueError(f"apply speaker names failed with exit code {process.returncode}: {process.stdout[-2000:]}")
+        # Keep subprocess output in the server log only; do not echo internal
+        # paths/details back to the HTTP client.
+        print(
+            f"[apply-speaker-names] exit {process.returncode}\n{process.stdout[-2000:]}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise ValueError(f"apply speaker names failed with exit code {process.returncode}")
     payload = _result_payload(manifest_path, root)
     if payload is None:
         raise ValueError("result manifest disappeared")
