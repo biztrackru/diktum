@@ -2,6 +2,8 @@
 
 set -u
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$(cd "$APP_DIR/.." && pwd)"
 HOST="${VOICE_RECOGNIZER_HOST:-127.0.0.1}"

@@ -7,7 +7,7 @@ import warnings
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from voice_recognizer.gigastt import GigasttResult, GigasttWord
 
@@ -51,9 +51,14 @@ def run_pyannote(
     num_speakers: int | None = None,
     min_speakers: int | None = None,
     max_speakers: int | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> DiarizationRun:
-    os.environ.setdefault("MPLCONFIGDIR", ".cache/matplotlib")
+    matplotlib_cache = Path(os.environ.get("MPLCONFIGDIR") or ".cache/matplotlib").resolve()
+    matplotlib_cache.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MPLCONFIGDIR", str(matplotlib_cache))
     warnings.filterwarnings("ignore", category=UserWarning, module="pyannote.audio.core.io")
+    _emit_progress(progress, f"Diarization / pyannote: preparing local cache {matplotlib_cache}")
+    _emit_progress(progress, "Diarization / pyannote: importing Python packages")
     try:
         import numpy as np
         import torch
@@ -63,6 +68,10 @@ def run_pyannote(
             "pyannote.audio is not installed. Run: .venv/bin/python -m pip install -e 'app[diarization]'"
         ) from error
 
+    _emit_progress(
+        progress,
+        f"Diarization / pyannote: loading model {model_id}. First run may download/cache model files.",
+    )
     try:
         pipeline = Pipeline.from_pretrained(model_id, token=hf_token)
     except Exception as error:
@@ -81,8 +90,12 @@ def run_pyannote(
 
     target_device = _choose_device(device, torch)
     if target_device is not None:
+        _emit_progress(progress, f"Diarization / pyannote: moving model to device {target_device}")
         pipeline.to(target_device)
+    else:
+        _emit_progress(progress, "Diarization / pyannote: using default device")
 
+    _emit_progress(progress, f"Diarization / pyannote: loading prepared audio {audio_path}")
     waveform, sample_rate = _load_wav_as_tensor(audio_path, np, torch)
     if target_device is not None:
         waveform = waveform.to(target_device)
@@ -96,11 +109,13 @@ def run_pyannote(
         kwargs["max_speakers"] = max_speakers
 
     started = time.perf_counter()
+    _emit_progress(progress, "Diarization / pyannote: running speaker separation")
     try:
         diarization = pipeline({"waveform": waveform, "sample_rate": sample_rate}, **kwargs)
     except Exception as error:
         raise DiarizationError(f"pyannote diarization failed: {error}") from error
     elapsed = time.perf_counter() - started
+    _emit_progress(progress, f"Diarization / pyannote: speaker separation finished in {elapsed:.1f}s")
 
     label_to_id: dict[str, int] = {}
     turns: list[DiarizationTurn] = []
@@ -116,6 +131,11 @@ def run_pyannote(
             )
         )
     return DiarizationRun(turns=turns, elapsed_seconds=elapsed)
+
+
+def _emit_progress(progress: Callable[[str], None] | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
 
 
 def _iter_diarization_tracks(diarization: Any) -> Any:

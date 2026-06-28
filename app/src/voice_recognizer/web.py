@@ -419,60 +419,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       background: var(--accent);
       box-shadow: 0 0 0 3px rgba(11, 127, 114, 0.14);
     }}
-    .workflow {{
-      display: grid;
-      grid-template-columns: repeat(5, minmax(120px, 1fr));
-      gap: 1px;
-      padding: 0 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-    }}
-    .workflow-step {{
-      min-height: 38px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 720;
-    }}
-    .workflow-step.done {{
-      color: var(--accent);
-    }}
-    .workflow-step.active {{
-      color: var(--text);
-    }}
-    .workflow-step.failed {{
-      color: var(--danger);
-    }}
-    .step-index {{
-      width: 20px;
-      height: 20px;
-      display: inline-grid;
-      place-items: center;
-      border-radius: 50%;
-      background: var(--surface-3);
-      color: var(--accent);
-      font-size: 11px;
-      font-weight: 800;
-    }}
-    .workflow-step.done .step-index {{
-      background: var(--accent);
-      color: #fff;
-    }}
-    .workflow-step.active .step-index {{
-      background: var(--accent-soft);
-      box-shadow: 0 0 0 3px rgba(11, 127, 114, 0.1);
-    }}
-    .workflow-step.failed .step-index {{
-      background: rgba(180, 35, 24, 0.1);
-      color: var(--danger);
-    }}
     main {{
       display: grid;
       grid-template-columns: minmax(330px, 390px) minmax(360px, 1fr) minmax(380px, 470px);
       gap: 14px;
-      min-height: calc(100vh - 99px);
+      min-height: calc(100vh - 74px);
       padding: 14px;
     }}
     .sidebar, .workbench, .review {{
@@ -600,9 +551,59 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       font-size: 12px;
       font-weight: 650;
     }}
+    .engine-help {{
+      display: block;
+      width: 100%;
+      color: var(--soft);
+      line-height: 1.35;
+    }}
     .speaker-controls {{
       display: grid;
       gap: 8px;
+    }}
+    .speaker-fields[hidden] {{
+      display: none;
+    }}
+    .conditional-controls {{
+      display: grid;
+      gap: 8px;
+    }}
+    .conditional-controls[hidden] {{
+      display: none;
+    }}
+    .advanced-settings {{
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface-2);
+      overflow: hidden;
+    }}
+    .advanced-settings summary {{
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 10px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      list-style: none;
+    }}
+    .advanced-settings summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .advanced-settings summary::after {{
+      content: "v";
+      color: var(--soft);
+    }}
+    .advanced-settings[open] summary::after {{
+      content: "^";
+    }}
+    .advanced-body {{
+      display: grid;
+      gap: 10px;
+      padding: 0 10px 10px;
     }}
     .segmented {{
       display: grid;
@@ -1264,18 +1265,84 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .speaker-row input {{
       grid-column: 1 / -1;
     }}
+    .log-summary {{
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      background: rgba(11, 127, 114, 0.035);
+    }}
+    .log-summary-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .log-summary-item {{
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 9px;
+      background: #fff;
+    }}
+    .log-summary-item span {{
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 780;
+      text-transform: uppercase;
+    }}
+    .log-summary-item strong {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 780;
+    }}
+    .log-events {{
+      display: grid;
+      gap: 5px;
+    }}
+    .log-event-line {{
+      min-width: 0;
+      overflow-wrap: anywhere;
+      color: #1d2428;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }}
+    .raw-log {{
+      border-top: 1px solid var(--border);
+      background: #fbfbfa;
+    }}
+    .raw-log summary {{
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 780;
+    }}
+    .raw-log[open] summary {{
+      border-bottom: 1px solid var(--border);
+    }}
     pre {{
       margin: 0;
       height: 100%;
-      min-height: 260px;
-      max-height: 34vh;
+      min-height: 180px;
+      max-height: 32vh;
       padding: 12px;
       overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
       color: #1d2428;
       background: #fbfbfa;
-      border-radius: 0 0 var(--radius) var(--radius);
       font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     }}
     .empty {{
@@ -1301,13 +1368,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         justify-content: flex-start;
         text-align: left;
       }}
-      .workflow {{
-        grid-template-columns: 1fr;
-        padding: 6px 14px;
-      }}
-      .workflow-step {{
-        min-height: 28px;
-      }}
       main {{
         grid-template-columns: 1fr;
         padding: 10px;
@@ -1325,7 +1385,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         grid-column: 2;
       }}
       .result-tabs,
-      .overview-grid {{
+      .overview-grid,
+      .log-summary-grid {{
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
     }}
@@ -1349,13 +1410,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         </span>
       </div>
     </header>
-    <nav class="workflow" aria-label="Workflow">
-      <span class="workflow-step active" data-workflow-step="0"><span class="step-index">1</span>Inbox</span>
-      <span class="workflow-step" data-workflow-step="1"><span class="step-index">2</span>Настройки</span>
-      <span class="workflow-step" data-workflow-step="2"><span class="step-index">3</span>Очередь</span>
-      <span class="workflow-step" data-workflow-step="3"><span class="step-index">4</span>Спикеры</span>
-      <span class="workflow-step" data-workflow-step="4"><span class="step-index">5</span>Экспорт</span>
-    </nav>
     <main>
       <aside class="sidebar">
         <section class="panel">
@@ -1403,40 +1457,34 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                 <button class="preset-button" type="button" data-batch-action="all">Все</button>
                 <button class="preset-button" type="button" data-batch-action="none">Ни одного</button>
               </div>
-              <div class="grid-2">
-                <label>Старт
-                  <input name="start" inputmode="decimal" placeholder="0 или 1:20">
-                </label>
-                <label>Длительность
-                  <input name="duration" inputmode="decimal" placeholder="2:00">
-                </label>
-              </div>
-              <div class="clip-tools" id="clip-tools" hidden>
+              <div class="conditional-controls" id="clip-fields" hidden>
+                <div class="grid-2">
+                  <label>Старт
+                    <input name="start" inputmode="decimal" placeholder="0 или 1:20">
+                  </label>
+                  <label>Длительность
+                    <input name="duration" inputmode="decimal" placeholder="2:00">
+                  </label>
+                </div>
+                <div class="clip-tools" id="clip-tools">
                 <div class="preset-row" aria-label="Пресеты тестового фрагмента">
                   <button class="preset-button" type="button" data-start="0" data-duration="30">0:30</button>
                   <button class="preset-button" type="button" data-start="0" data-duration="120">2:00</button>
                   <button class="preset-button" type="button" data-start="0" data-duration="300">5:00</button>
                   <span class="badge" id="clip-readout" aria-live="polite">0:00-2:00</span>
                 </div>
+                </div>
               </div>
-              <div class="grid-2">
-                <label>ASR-движок
-                  <select name="asr_engine">
-                    {asr_options}
-                  </select>
-                  <span class="engine-status" title="{html.escape(engine_status['title'])}">
-                    <span class="badge {html.escape(engine_status['class'])}">{html.escape(engine_status['label'])}</span>
-                    <span>{html.escape(engine_status['detail'])}</span>
-                  </span>
-                </label>
-                <label>Устройство
-                  <select name="device">
-                    <option value="auto">auto</option>
-                    <option value="mps">mps</option>
-                    <option value="cpu">cpu</option>
-                  </select>
-                </label>
-              </div>
+              <label>ASR-движок
+                <select name="asr_engine">
+                  {asr_options}
+                </select>
+                <span class="engine-status" title="{html.escape(engine_status['title'])}">
+                  <span class="badge {html.escape(engine_status['class'])}">{html.escape(engine_status['label'])}</span>
+                  <span>{html.escape(engine_status['detail'])}</span>
+                  <span class="engine-help">{html.escape(engine_status['help'])}</span>
+                </span>
+              </label>
               <div class="speaker-controls">
                 <div class="setting-line">
                   <span>Определение спикеров</span>
@@ -1447,10 +1495,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                   <button class="segment" type="button" data-speaker-mode="exact">Точно</button>
                   <button class="segment" type="button" data-speaker-mode="range">Диапазон</button>
                 </div>
-                <div class="grid-3">
+                <div class="grid-3 speaker-fields" data-speaker-fields="exact" hidden>
                   <label>Спикеров
                     <input name="num_speakers" inputmode="numeric">
                   </label>
+                </div>
+                <div class="grid-2 speaker-fields" data-speaker-fields="range" hidden>
                   <label>Мин.
                     <input name="min_speakers" inputmode="numeric">
                   </label>
@@ -1459,16 +1509,25 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                   </label>
                 </div>
               </div>
-              <label>Результаты
-                <input name="output_dir" value="{html.escape(output_dir)}">
-              </label>
-              <label>Имена спикеров
-                <textarea name="speaker_names" placeholder="1=Андрей&#10;2=Оля&#10;3=Вопрос из зала"></textarea>
-              </label>
-              <label class="check-row">
-                <input name="overwrite" type="checkbox">
-                <span>Пересчитать существующие артефакты</span>
-              </label>
+              <details class="advanced-settings" id="advanced-settings">
+                <summary>Подробнее</summary>
+                <div class="advanced-body">
+                  <label>Устройство
+                    <select name="device">
+                      <option value="auto">auto</option>
+                      <option value="mps">mps</option>
+                      <option value="cpu">cpu</option>
+                    </select>
+                  </label>
+                  <label>Результаты
+                    <input name="output_dir" value="{html.escape(output_dir)}">
+                  </label>
+                  <label class="check-row">
+                    <input name="overwrite" type="checkbox">
+                    <span>Пересчитать существующие артефакты</span>
+                  </label>
+                </div>
+              </details>
               <div class="actions">
                 <button class="btn primary full" id="run-button" type="submit">Запустить выбранный</button>
                 <button class="btn full" id="queue-all-button" type="button">Поставить весь Inbox</button>
@@ -1505,7 +1564,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             <h2>Журнал</h2>
             <span class="badge" id="active-job" aria-live="polite">-</span>
           </div>
-          <pre id="log"></pre>
+          <div class="log-summary" id="log-summary" aria-live="polite">
+            <div class="empty">Журнал появится после запуска задачи</div>
+          </div>
+          <details class="raw-log" id="raw-log-details">
+            <summary>
+              <span>Полный технический журнал</span>
+              <span class="badge" id="log-line-count">0 строк</span>
+            </summary>
+            <pre id="log"></pre>
+          </details>
         </section>
       </section>
 
@@ -1534,6 +1602,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const jobsNode = document.querySelector("#jobs");
     const resultsList = document.querySelector("#results-list");
     const logNode = document.querySelector("#log");
+    const logSummaryNode = document.querySelector("#log-summary");
+    const rawLogDetails = document.querySelector("#raw-log-details");
+    const logLineCount = document.querySelector("#log-line-count");
     const jobCount = document.querySelector("#job-count");
     const resultCount = document.querySelector("#result-count");
     const queuedCount = document.querySelector("#queued-count");
@@ -1545,7 +1616,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const runModeLabel = document.querySelector("#run-mode-label");
     const modeButtons = document.querySelectorAll(".segment[data-mode]");
     const centerButtons = document.querySelectorAll(".segment[data-center-view]");
-    const workflowSteps = document.querySelectorAll(".workflow-step[data-workflow-step]");
+    const clipFields = document.querySelector("#clip-fields");
     const clipTools = document.querySelector("#clip-tools");
     const clipReadout = document.querySelector("#clip-readout");
     const batchTools = document.querySelector("#batch-tools");
@@ -1554,6 +1625,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const presetButtons = document.querySelectorAll(".preset-button[data-duration]");
     const speakerModeLabel = document.querySelector("#speaker-mode-label");
     const speakerModeButtons = document.querySelectorAll(".segment[data-speaker-mode]");
+    const speakerFieldGroups = document.querySelectorAll("[data-speaker-fields]");
     const speakerInputs = {{
       exact: document.querySelector('input[name="num_speakers"]'),
       min: document.querySelector('input[name="min_speakers"]'),
@@ -1563,6 +1635,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let activeResultId = null;
     let activeView = "job";
     let renderedResultKey = null;
+    let renderedJobsListHtml = "";
+    let renderedResultsListHtml = "";
     let runMode = "single";
     let centerView = "queue";
     let speakerMode = "auto";
@@ -1598,6 +1672,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       runModeLabel.textContent = runMode === "batch" ? "весь Inbox" : runMode === "clip" ? "тест-фрагмент" : "полный файл";
       runButton.textContent = runMode === "batch" ? "Поставить весь Inbox" : runMode === "clip" ? "Запустить фрагмент" : "Запустить полный файл";
       queueAllButton.hidden = runMode === "batch";
+      clipFields.hidden = runMode !== "clip";
       clipTools.hidden = runMode !== "clip";
       batchTools.hidden = runMode !== "batch";
       fileList.classList.toggle("batch-mode", runMode === "batch");
@@ -1606,10 +1681,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         speakerInputs.exact.form.elements.start.value = "0";
         speakerInputs.exact.form.elements.duration.value = "2:00";
       }}
+      if (runMode !== "clip") {{
+        speakerInputs.exact.form.elements.start.value = "";
+        speakerInputs.exact.form.elements.duration.value = "";
+      }}
       if (runMode === "batch") setSpeakerMode("auto");
       updateClipReadout();
       updateBatchSelectionSummary();
-      if (activeView !== "job" || !activeJobId) updateWorkflow();
     }}
 
     function setCenterView(view) {{
@@ -1627,31 +1705,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }});
     }}
 
-    function updateWorkflow(job = null, options = {{}}) {{
-      let activeIndex = sourceSelect.value ? 1 : 0;
-      let failed = false;
-      if (options.view === "result" || activeView === "result") {{
-        activeIndex = 4;
-      }} else if (job) {{
-        failed = job.status === "failed";
-        if (job.status === "done") {{
-          activeIndex = 4;
-        }} else if (job.status === "queued") {{
-          activeIndex = 2;
-        }} else if (currentStageIndex(job) >= 2) {{
-          activeIndex = 3;
-        }} else {{
-          activeIndex = 2;
-        }}
-      }}
-      workflowSteps.forEach((step) => {{
-        const index = Number(step.dataset.workflowStep || 0);
-        step.classList.toggle("done", index < activeIndex && !failed);
-        step.classList.toggle("active", index === activeIndex && !failed);
-        step.classList.toggle("failed", index === activeIndex && failed);
-      }});
-    }}
-
     function setSpeakerMode(mode) {{
       speakerMode = ["auto", "exact", "range"].includes(mode) ? mode : "auto";
       speakerModeButtons.forEach((button) => {{
@@ -1659,6 +1712,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }});
       const isExact = speakerMode === "exact";
       const isRange = speakerMode === "range";
+      speakerFieldGroups.forEach((group) => {{
+        group.hidden = group.dataset.speakerFields !== speakerMode;
+      }});
       speakerInputs.exact.disabled = !isExact;
       speakerInputs.min.disabled = !isRange;
       speakerInputs.max.disabled = !isRange;
@@ -1783,7 +1839,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       setRunMode("single");
       syncFileSelection();
       updateClipReadout();
-      updateWorkflow();
     }});
     fileList.addEventListener("change", (event) => {{
       const checkbox = event.target.closest(".batch-file-checkbox");
@@ -1795,7 +1850,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       setRunMode("single");
       syncFileSelection();
       updateClipReadout();
-      updateWorkflow();
     }});
     form.elements.start.addEventListener("input", updateClipReadout);
     form.elements.duration.addEventListener("input", updateClipReadout);
@@ -1824,7 +1878,27 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     speakerModeButtons.forEach((button) => {{
       button.addEventListener("click", () => setSpeakerMode(button.dataset.speakerMode));
     }});
+    jobsNode.addEventListener("click", (event) => {{
+      if (event.target.closest("a")) return;
+      const row = event.target.closest(".job-row");
+      if (!row || !jobsNode.contains(row)) return;
+      setCenterView("queue");
+      activeView = "job";
+      activeJobId = row.dataset.job;
+      activeResultId = null;
+      renderResultList();
+      loadJobs();
+    }});
+    resultsList.addEventListener("click", (event) => {{
+      const row = event.target.closest(".result-row");
+      if (!row || !resultsList.contains(row)) return;
+      openDiskResult(row.dataset.resultId);
+    }});
     document.querySelector("#refresh-button").addEventListener("click", async () => {{
+      if (activeView === "problem") {{
+        activeView = "job";
+        renderedResultKey = null;
+      }}
       await loadResults();
       await loadInbox();
       await loadJobs();
@@ -1855,7 +1929,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         setCenterView("queue");
         await loadJobs();
       }} catch (error) {{
-        logNode.textContent = String(error);
+        showForegroundProblem(error, {{ context: "launch", statusLabel: "не поставлено" }});
       }} finally {{
         updateRunAvailability();
       }}
@@ -1866,7 +1940,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         ? batchSelectedSources()
         : Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
       if (!sources.length) {{
-        logNode.textContent = runMode === "batch" ? "Выберите хотя бы один файл для пакетной обработки" : "Inbox пуст";
+        setLogText(runMode === "batch" ? "Выберите хотя бы один файл для пакетной обработки" : "Inbox пуст");
         return;
       }}
       runButton.disabled = true;
@@ -1884,7 +1958,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         setRunMode("batch");
         await loadJobs();
       }} catch (error) {{
-        logNode.textContent = String(error);
+        showForegroundProblem(error, {{ context: "batch", statusLabel: "ошибка пакета" }});
       }} finally {{
         updateRunAvailability();
       }}
@@ -1929,7 +2003,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         await loadInbox(firstUploaded);
       }} catch (error) {{
         setStatusBadge(uploadStatus, "failed", "ошибка");
-        logNode.textContent = String(error);
+        showForegroundProblem(error, {{ context: "upload", statusLabel: "загрузка не удалась" }});
       }} finally {{
         uploadButton.disabled = false;
       }}
@@ -1942,7 +2016,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "request failed");
       }} catch (error) {{
-        logNode.textContent = String(error);
+        showForegroundProblem(error, {{ context: "inbox", statusLabel: "Inbox недоступен" }});
         return;
       }}
       const files = payload.files || [];
@@ -1968,7 +2042,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       updateClipReadout();
       updateBatchSelectionSummary();
       updateRunAvailability();
-      updateWorkflow();
     }}
 
     function renderInboxFile(file) {{
@@ -2055,6 +2128,18 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       updateRunAvailability();
     }}
 
+    function setJobsHtml(html) {{
+      if (renderedJobsListHtml === html) return;
+      jobsNode.innerHTML = html;
+      renderedJobsListHtml = html;
+    }}
+
+    function setResultsHtml(html) {{
+      if (renderedResultsListHtml === html) return;
+      resultsList.innerHTML = html;
+      renderedResultsListHtml = html;
+    }}
+
     async function loadJobs() {{
       let payload;
       try {{
@@ -2062,25 +2147,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "request failed");
       }} catch (error) {{
-        setStatusBadge(resultState, "failed", "offline");
-        setStatusBadge(activeJobNode, "failed", "offline");
-        const problem = diagnoseProblem(String(error), {{ offline: true }});
-        resultDetails.innerHTML = renderDiagnosticBlock(problem);
-        logNode.textContent = `${{problem.title}}\n${{problem.detail}}\n\n${{problem.actions.join("\\n")}}`;
-        renderedResultKey = `offline:${{String(error)}}`;
+        showForegroundProblem(error, {{ offline: true, statusLabel: "offline", activeLabel: "offline" }});
         return;
       }}
       const jobs = payload.jobs || [];
       updateQueueSummary(jobs);
       if (!jobs.length) {{
-        jobsNode.innerHTML = '<div class="empty">Нет задач</div>';
-        if (activeView !== "result") {{
+        setJobsHtml('<div class="empty">Нет задач</div>');
+        if (activeView !== "result" && activeView !== "problem") {{
           resultDetails.innerHTML = '<div class="empty">Нет выбранной задачи</div>';
           setStatusBadge(resultState, "", "-");
-          logNode.textContent = "";
+          setLogText("");
           setStatusBadge(activeJobNode, "", "-");
           renderedResultKey = null;
-          updateWorkflow();
         }}
         return;
       }}
@@ -2088,24 +2167,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (!activeJobId) activeJobId = jobs[0].id;
       const active = jobs.find((job) => job.id === activeJobId) || jobs[0];
       activeJobId = active.id;
-      jobsNode.innerHTML = jobs.map((job) => renderJob(job)).join("");
-      if (activeView !== "result") {{
+      setJobsHtml(jobs.map((job) => renderJob(job)).join(""));
+      if (activeView !== "result" && activeView !== "problem") {{
         setStatusBadge(activeJobNode, statusClass(active.status), statusLabel(active.status));
         setStatusBadge(resultState, statusClass(active.status), statusLabel(active.status));
-        setLogText(active.log.join(""));
-        updateWorkflow(active);
+        setLogText(active.log.join(""), {{ job: active }});
         renderResults(active, {{ force: active.id !== previousActiveJobId }});
       }}
-      document.querySelectorAll(".job-row").forEach((row) => {{
-        row.addEventListener("click", () => {{
-          setCenterView("queue");
-          activeView = "job";
-          activeJobId = row.dataset.job;
-          activeResultId = null;
-          renderResultList();
-          loadJobs();
-        }});
-      }});
     }}
 
     async function loadResults(preferredResultId = null) {{
@@ -2116,8 +2184,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if (!response.ok) throw new Error(payload.error || "request failed");
       }} catch (error) {{
         resultCount.textContent = "нет доступа";
-        resultsList.innerHTML = '<div class="empty">Не удалось прочитать outputs</div>';
-        logNode.textContent = String(error);
+        setResultsHtml('<div class="empty">Не удалось прочитать outputs</div>');
+        showForegroundProblem(error, {{ context: "results", statusLabel: "outputs недоступны" }});
         return;
       }}
       diskResults = payload.results || [];
@@ -2130,10 +2198,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function renderResultList() {{
       resultCount.textContent = `${{diskResults.length}} готово`;
       if (!diskResults.length) {{
-        resultsList.innerHTML = '<div class="empty">Готовые результаты появятся здесь после обработки</div>';
+        setResultsHtml('<div class="empty">Готовые результаты появятся здесь после обработки</div>');
         return;
       }}
-      resultsList.innerHTML = diskResults.map((result) => (
+      setResultsHtml(diskResults.map((result) => (
         `<button class="result-row ${{activeView === "result" && result.id === activeResultId ? "active" : ""}}" type="button" data-result-id="${{escapeAttribute(result.id)}}">
           <span class="badge ${{statusClass(result.status)}}">${{escapeHtml(resultKindLabel(result.kind))}}</span>
           <span class="result-main">
@@ -2142,16 +2210,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           </span>
           <span class="badge ${{sourceFreshnessClass(result)}}" title="${{escapeAttribute(sourceFreshnessTitle(result))}}">${{escapeHtml(resultListTrail(result))}}</span>
         </button>`
-      )).join("");
-      document.querySelectorAll(".result-row").forEach((row) => {{
-        row.addEventListener("click", () => openDiskResult(row.dataset.resultId));
-      }});
+      )).join(""));
     }}
 
     function openDiskResult(resultId) {{
       const result = diskResults.find((item) => item.id === resultId);
       if (!result) {{
-        logNode.textContent = "Готовый результат не найден. Нажмите Обновить.";
+        showForegroundProblem("result not found", {{ context: "results", statusLabel: "результат не найден" }});
         return;
       }}
       activeView = "result";
@@ -2160,22 +2225,84 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       setCenterView("results");
       setStatusBadge(activeJobNode, "done", "готовый");
       setStatusBadge(resultState, statusClass(result.status), statusLabel(result.status));
-      setLogText((result.log || []).join(""), {{ forceBottom: true }});
-      updateWorkflow(result, {{ view: "result" }});
+      setLogText((result.log || []).join(""), {{ forceBottom: true, job: result }});
       renderResultList();
       renderResults(result, {{ force: true }});
     }}
 
     function setLogText(text, options = {{}}) {{
+      const rawText = String(text || "");
       const shouldFollow = options.forceBottom || isLogNearBottom();
-      if (logNode.textContent !== text) {{
-        logNode.textContent = text;
+      const previousScrollTop = logNode.scrollTop;
+      if (logNode.textContent !== rawText) {{
+        logNode.textContent = rawText;
       }}
-      if (shouldFollow) logNode.scrollTop = logNode.scrollHeight;
+      if (logLineCount) logLineCount.textContent = formatLogLineCount(countLogLines(rawText));
+      if (shouldFollow) {{
+        logNode.scrollTop = logNode.scrollHeight;
+      }} else {{
+        logNode.scrollTop = previousScrollTop;
+      }}
+      renderLogSummary(options.job || null, rawText, options.problem || null);
     }}
 
     function isLogNearBottom() {{
+      if (rawLogDetails && !rawLogDetails.open) return true;
       return logNode.scrollHeight - logNode.scrollTop - logNode.clientHeight < 32;
+    }}
+
+    function countLogLines(text) {{
+      const trimmed = String(text || "").trim();
+      if (!trimmed) return 0;
+      return trimmed.split(/\\r?\\n/).filter(Boolean).length;
+    }}
+
+    function formatLogLineCount(count) {{
+      const value = Number(count || 0);
+      const mod10 = value % 10;
+      const mod100 = value % 100;
+      const word = mod10 === 1 && mod100 !== 11
+        ? "строка"
+        : [2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)
+          ? "строки"
+          : "строк";
+      return `${{value}} ${{word}}`;
+    }}
+
+    function renderLogSummary(job, rawText, problem = null) {{
+      if (problem) {{
+        logSummaryNode.innerHTML = `
+          <div class="log-summary-grid">
+            <div class="log-summary-item"><span>Состояние</span><strong>${{escapeHtml(problem.title)}}</strong></div>
+            <div class="log-summary-item"><span>Действие</span><strong>см. проверку</strong></div>
+            <div class="log-summary-item"><span>Raw</span><strong>${{formatLogLineCount(countLogLines(rawText))}}</strong></div>
+          </div>
+          <div class="heartbeat">${{escapeHtml(problem.detail)}}</div>`;
+        return;
+      }}
+      const lines = meaningfulLogLinesFromText(rawText);
+      if (!job && !lines.length) {{
+        logSummaryNode.innerHTML = '<div class="empty">Журнал появится после запуска задачи</div>';
+        return;
+      }}
+      const status = job ? statusLabel(job.status) : "Сообщение";
+      const stage = job ? (job.is_disk_result ? "Готовый результат" : currentStage(job).label) : "Система";
+      const elapsed = job ? formatDuration(elapsedSeconds(job)) : "-";
+      const heartbeat = lines.length ? lines[lines.length - 1] : "Ждём первые строки pipeline.";
+      logSummaryNode.innerHTML = `
+        <div class="log-summary-grid">
+          <div class="log-summary-item"><span>Статус</span><strong>${{escapeHtml(status)}}</strong></div>
+          <div class="log-summary-item"><span>Этап</span><strong>${{escapeHtml(stage)}}</strong></div>
+          <div class="log-summary-item"><span>Elapsed</span><strong>${{escapeHtml(elapsed)}}</strong></div>
+        </div>
+        <div class="heartbeat">${{escapeHtml(heartbeat)}}</div>
+        ${{renderRecentLogEvents(lines)}}`;
+    }}
+
+    function renderRecentLogEvents(lines) {{
+      const recent = lines.slice(0, -1).slice(-3);
+      if (!recent.length) return "";
+      return `<div class="log-events">${{recent.map((line) => `<div class="log-event-line">${{escapeHtml(line)}}</div>`).join("")}}</div>`;
     }}
 
     function updateQueueSummary(jobs) {{
@@ -2344,7 +2471,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               renderResultList();
               setStatusBadge(activeJobNode, "done", "готовый");
               setStatusBadge(resultState, statusClass(payload.status), statusLabel(payload.status));
-              setLogText((payload.log || []).join(""), {{ forceBottom: true }});
+              setLogText((payload.log || []).join(""), {{ forceBottom: true, job: payload }});
               renderResults(payload, {{ force: true }});
               await loadInbox();
             }} else {{
@@ -2352,7 +2479,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               await loadJobs();
             }}
           }} catch (error) {{
-            logNode.textContent = String(error);
+            showForegroundProblem(error, {{ context: "applyNames", statusLabel: "имена не применены" }});
           }} finally {{
             applyButton.disabled = false;
           }}
@@ -2397,7 +2524,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               await deleteJob(jobId);
             }}
           }} catch (error) {{
-            logNode.textContent = String(error);
+            showForegroundProblem(error, {{ context: action === "cancel" ? "cancel" : "delete" }});
             button.disabled = false;
           }}
         }});
@@ -2416,7 +2543,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       activeJobId = payload.id;
       activeResultId = null;
       renderedResultKey = null;
-      setLogText((payload.log || []).join(""), {{ forceBottom: true }});
+      setLogText((payload.log || []).join(""), {{ forceBottom: true, job: payload }});
       await loadJobs();
     }}
 
@@ -2449,11 +2576,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           renderedResultKey = null;
           setStatusBadge(activeJobNode, statusClass(payload.status), statusLabel(payload.status));
           setStatusBadge(resultState, statusClass(payload.status), statusLabel(payload.status));
-          setLogText((payload.log || []).join(""), {{ forceBottom: true }});
+          setLogText((payload.log || []).join(""), {{ forceBottom: true, job: payload }});
           await loadJobs();
           await loadResults();
         }} catch (error) {{
-          logNode.textContent = String(error);
+          showForegroundProblem(error, {{ context: "rerun", statusLabel: "обновление не запущено" }});
           button.disabled = false;
         }}
       }});
@@ -2839,7 +2966,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         return renderProgressBlock(job, "Останавливаю дочерний процесс. Это может занять несколько секунд, если ASR/diarization завершает текущую операцию.");
       }}
       if (job.status === "running") {{
-        return renderProgressBlock(job, "Задача выполняется. Результаты и спикеры появятся здесь после завершения.");
+        return renderProgressBlock(job, runningDetail(job));
       }}
       return renderProgressBlock(job, "Задача ожидает очереди. Можно открыть другую задачу — эта не потеряется.");
     }}
@@ -2880,9 +3007,20 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const text = meaningfulLogLines(job).join("\\n").toLowerCase();
       if (/manifest:|clean txt:|clean markdown:|markdown:|done:|export/.test(text)) return 4;
       if (/diarization json:|speaker sample|speaker names|склейк|merge|align|format/.test(text)) return 3;
-      if (/diarization|pyannote|vad|speaker-diarization/.test(text)) return 2;
+      if (/diarization|pyannote|vad|speaker-diarization|speaker separation|matplotlib|font cache/.test(text)) return 2;
       if (/asr json:|asr engine:|transcrib|recogniz|gigastt|whisper/.test(text)) return 1;
       return 0;
+    }}
+
+    function runningDetail(job) {{
+      const stage = currentStage(job);
+      if (stage && stage.key === "diarization") {{
+        return "Идёт разделение по спикерам. На первом запуске pyannote может несколько минут загружать модель и готовить локальный cache.";
+      }}
+      if (stage && stage.key === "asr") {{
+        return "Идёт распознавание речи. Для длинных файлов ASR работает по частям и пишет промежуточные JSON.";
+      }}
+      return "Задача выполняется. Результаты и спикеры появятся здесь после завершения.";
     }}
 
     function elapsedSeconds(job) {{
@@ -2930,12 +3068,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       return (job.log || []).map((line) => String(line)).join("\\n");
     }}
 
-    function meaningfulLogLines(job) {{
-      return (job.log || [])
-        .flatMap((entry) => String(entry).split(/\\r?\\n/))
+    function meaningfulLogLinesFromText(rawText) {{
+      return String(rawText || "")
+        .split(/\\r?\\n/)
         .map((line) => line.trim())
         .filter(Boolean)
         .filter((line) => !line.startsWith("$ "));
+    }}
+
+    function meaningfulLogLines(job) {{
+      return meaningfulLogLinesFromText(jobLogText(job));
     }}
 
     function lastMeaningfulLog(job) {{
@@ -2943,8 +3085,26 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       return lines.length ? lines[lines.length - 1] : "Команда запущена, ждём первый лог pipeline.";
     }}
 
+    function showForegroundProblem(error, options = {{}}) {{
+      const rawText = String(error?.message || error || "unknown error");
+      const problem = diagnoseProblem(rawText, options);
+      const statusText = options.statusLabel || "ошибка";
+      activeView = "problem";
+      setStatusBadge(resultState, "failed", statusText);
+      setStatusBadge(activeJobNode, "failed", options.activeLabel || statusText);
+      resultDetails.innerHTML = renderDiagnosticBlock(problem);
+      setLogText(problemLogText(problem, rawText), {{ forceBottom: true, problem }});
+      renderedResultKey = `foreground-error:${{options.context || ""}}:${{rawText}}`;
+    }}
+
+    function problemLogText(problem, rawText) {{
+      const actions = (problem.actions || []).map((action) => `- ${{action}}`).join("\\n");
+      return `${{problem.title}}\\n${{problem.detail}}\\n\\nЧто сделать:\\n${{actions}}\\n\\nТехническая деталь:\\n${{rawText}}`;
+    }}
+
     function diagnoseProblem(rawText, options = {{}}) {{
       const text = String(rawText || "").toLowerCase();
+      const context = String(options.context || "");
       if (options.offline) {{
         return {{
           title: "Сервер не отвечает",
@@ -2956,6 +3116,50 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           ],
         }};
       }}
+      if (/unsupported file type|invalid upload filename|upload filename|no supported files uploaded|upload must use multipart|no supported files/.test(text)) {{
+        return {{
+          title: "Файл не загрузился",
+          detail: "Файл не прошёл проверку загрузки. Чаще всего это неподдержанный формат или пустой выбор файлов.",
+          actions: [
+            "Выберите обычный аудиофайл: `.m4a`, `.mp3`, `.wav`, `.flac`, `.ogg` или видеофайл `.mp4/.mov/.mkv/.webm`.",
+            "Если файл уже есть в `Inbox`, выберите его из списка и не загружайте повторно.",
+            "Если формат нестандартный, сначала экспортируйте запись в `.m4a` или `.wav`.",
+          ],
+        }};
+      }}
+      if (/output_dir must stay inside outputs|output.*inside outputs|outside outputs/.test(text)) {{
+        return {{
+          title: "Папка результатов вне outputs",
+          detail: "Voice Recognizer хранит результаты только внутри локальной папки `outputs/`, чтобы не писать файлы в неожиданное место.",
+          actions: [
+            "Верните поле `Результаты` к значению `outputs/pipeline` или другой подпапке внутри `outputs/`.",
+            "Не указывайте абсолютный путь к личным папкам или внешним дискам в этом поле.",
+            "После исправления повторите запуск с теми же настройками.",
+          ],
+        }};
+      }}
+      if (/time values must be non-negative|could not convert string to float|invalid literal|incorrect time|некорректное время/.test(text)) {{
+        return {{
+          title: "Проверьте время фрагмента",
+          detail: "Старт и длительность должны быть положительным временем в секундах или формате `мм:сс` / `чч:мм:сс`.",
+          actions: [
+            "Нажмите один из пресетов тест-фрагмента: `0:30`, `2:00` или `5:00`.",
+            "Проверьте, что фрагмент не выходит за пределы длительности записи.",
+            "Для полного файла очистите поля `Старт` и `Длительность` или выберите режим `Один файл`.",
+          ],
+        }};
+      }}
+      if (/speaker_mode|num_speakers|min_speakers|max_speakers|speaker.*required|speakers.*required/.test(text)) {{
+        return {{
+          title: "Проверьте настройки спикеров",
+          detail: "Режим спикеров и числовые поля сейчас не согласованы: для точного режима нужно число, для диапазона — минимум или максимум.",
+          actions: [
+            "Выберите `Auto по файлу`, если не уверены в количестве участников.",
+            "Для режима `Точно` заполните только поле `Спикеров`.",
+            "Для режима `Диапазон` заполните `Мин.` и/или `Макс.`, где минимум не больше максимума.",
+          ],
+        }};
+      }}
       if (/audio file too long|maximum supported|7200s|file too long/.test(text)) {{
         return {{
           title: "Файл длиннее лимита ASR-движка",
@@ -2964,6 +3168,83 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             "Запустите файл через режим длинной обработки/chunking, если он доступен.",
             "Для быстрой проверки укажите тестовый фрагмент, например 120 секунд.",
             "Если ошибка повторяется, переключите ASR-движок или уменьшите длительность фрагмента.",
+          ],
+        }};
+      }}
+      if (context === "upload") {{
+        return {{
+          title: "Загрузка не удалась",
+          detail: "Интерфейс не смог сохранить выбранный файл в `Inbox/`.",
+          actions: [
+            "Проверьте, что файл доступен на этом Mac и не удалён после выбора.",
+            "Попробуйте положить файл в `Inbox/` вручную и нажать `Обновить`.",
+            "Если ошибка повторяется, проверьте права на папку проекта.",
+          ],
+        }};
+      }}
+      if (context === "inbox") {{
+        return {{
+          title: "Не удалось прочитать Inbox",
+          detail: "Интерфейс не смог обновить список локальных аудиофайлов.",
+          actions: [
+            "Проверьте, что папка `Inbox/` существует внутри проекта.",
+            "Запустите `Проверить Voice Recognizer.command`, если папка или права выглядят сломанными.",
+            "После исправления нажмите `Обновить` в интерфейсе.",
+          ],
+        }};
+      }}
+      if (context === "results") {{
+        return {{
+          title: "Не удалось прочитать готовые результаты",
+          detail: "Интерфейс не смог открыть библиотеку `outputs/` или выбранный manifest результата.",
+          actions: [
+            "Нажмите `Обновить`, чтобы перечитать `outputs/`.",
+            "Проверьте, что папка `outputs/` не была удалена или перемещена.",
+            "Если результат частично удалён, запустите обработку заново или восстановите manifest/export-файлы.",
+          ],
+        }};
+      }}
+      if (context === "launch" || context === "batch") {{
+        return {{
+          title: "Не удалось поставить задачу в очередь",
+          detail: "Задача не была запущена, потому что настройки формы не прошли проверку или сервер отказал запросу.",
+          actions: [
+            "Проверьте выбранный файл, режим фрагмента, число спикеров и папку результатов.",
+            "Если это пакетный запуск, убедитесь, что выбран хотя бы один файл.",
+            "После исправления нажмите запуск ещё раз — текущая форма не сброшена.",
+          ],
+        }};
+      }}
+      if (context === "applyNames") {{
+        return {{
+          title: "Не удалось применить имена спикеров",
+          detail: "Перерендер экспорта с новыми именами не завершился. ASR и диаризация не должны запускаться заново, но existing artifacts должны быть доступны.",
+          actions: [
+            "Проверьте, что исходный аудиофайл всё ещё лежит в `Inbox/`.",
+            "Проверьте, что result artifacts не удалены из `outputs/`.",
+            "Повторите действие после `Обновить`; введённые имена останутся в полях до перерисовки.",
+          ],
+        }};
+      }}
+      if (context === "rerun") {{
+        return {{
+          title: "Не удалось обновить результат",
+          detail: "Интерфейс не смог поставить пересчёт результата в очередь.",
+          actions: [
+            "Проверьте, что исходный файл результата существует и находится внутри проекта.",
+            "Проверьте, что папка результата всё ещё находится внутри `outputs/`.",
+            "Если source был переименован, выберите файл из Inbox и запустите новую задачу.",
+          ],
+        }};
+      }}
+      if (context === "cancel" || context === "delete") {{
+        return {{
+          title: context === "cancel" ? "Не удалось остановить задачу" : "Не удалось убрать задачу",
+          detail: "Очередь не приняла действие управления задачей.",
+          actions: [
+            "Нажмите `Обновить`, чтобы получить актуальное состояние очереди.",
+            "Running-задачу сначала нужно остановить, а уже потом убирать из списка.",
+            "Если процесс завис, используйте `Остановить Voice Recognizer.command`.",
           ],
         }};
       }}
@@ -3252,6 +3533,7 @@ def _create_job(
     output_dir_arg = _cli_path(root, output_dir)
     command = [
         sys.executable,
+        "-u",
         "-m",
         "voice_recognizer.cli",
         "process",
@@ -3316,6 +3598,7 @@ def _run_job(job_id: str, root: Path) -> None:
     env.update(_read_dotenv(root / ".env"))
     env.setdefault("COLUMNS", "180")
     env.setdefault("NO_COLOR", "1")
+    env.setdefault("PYTHONUNBUFFERED", "1")
     env.setdefault("TERM", "dumb")
     process = subprocess.Popen(
         job.command,
@@ -4251,13 +4534,15 @@ def _asr_runtime_status(root: Path) -> dict[str, str]:
         return {
             "class": "failed",
             "label": "GigaSTT не настроен",
-            "detail": "запустите настройку перед обработкой",
+            "detail": "локальный ASR еще не готов",
+            "help": "Откройте 'Настроить Voice Recognizer.command' и разрешите этап 4/5: GigaSTT/GigaAM v3.",
             "title": "Не найдено: " + ", ".join(missing),
         }
     return {
         "class": "done",
         "label": "GigaSTT готов",
         "detail": "GigaAM v3 найден локально",
+        "help": "Можно запускать обработку. Это локальный распознаватель речи для русского языка.",
         "title": "tools/bin/gigastt и файлы .models/gigastt доступны на этом Mac",
     }
 

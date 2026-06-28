@@ -2,6 +2,8 @@
 
 set -u
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$(cd "$APP_DIR/.." && pwd)"
 VENV_DIR="$WORKSPACE_DIR/.venv"
@@ -11,6 +13,8 @@ GIGASTT_BIN="$WORKSPACE_DIR/tools/bin/gigastt"
 GIGASTT_MODEL_DIR="$WORKSPACE_DIR/.models/gigastt"
 INBOX_NAME="${VOICE_RECOGNIZER_INBOX:-Inbox}"
 OUTPUTS_DIR="$WORKSPACE_DIR/outputs"
+LOG_DIR="$WORKSPACE_DIR/logs"
+LOG_FILE=""
 PORTS_TEXT="${VOICE_RECOGNIZER_PORTS:-8765 8766}"
 PAUSE_ON_EXIT="${VOICE_RECOGNIZER_PAUSE_ON_EXIT:-1}"
 
@@ -19,6 +23,19 @@ cd "$WORKSPACE_DIR" || exit 1
 ok_count=0
 warn_count=0
 fail_count=0
+
+init_logging() {
+  local stamp
+  mkdir -p "$LOG_DIR"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  LOG_FILE="$LOG_DIR/doctor-$stamp.log"
+  ln -sf "$(basename "$LOG_FILE")" "$LOG_DIR/doctor-latest.log"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+  echo "Doctor log: $LOG_FILE"
+  echo "Latest doctor log: $LOG_DIR/doctor-latest.log"
+  echo "Лог не печатает HF token. Не пересылайте .env, аудио или outputs."
+  echo
+}
 
 pause_before_close() {
   if [[ "$PAUSE_ON_EXIT" == "0" ]]; then
@@ -190,16 +207,33 @@ check_python_packages() {
   fi
 
   local packages=(typer rich numpy pyannote.audio)
-  local package
-  for package in "${packages[@]}"; do
-    if "$VENV_PYTHON" - "$package" <<'PY' >/dev/null 2>&1
-import importlib
+  local report_file="$LOG_DIR/python-packages.$$"
+  rm -f "$report_file"
+  if ! "$VENV_PYTHON" - "${packages[@]}" > "$report_file" 2>/dev/null <<'PY'
+import importlib.metadata
 import sys
-name = sys.argv[1]
-importlib.import_module(name)
+for name in sys.argv[1:]:
+    try:
+        version = importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        print(f"{name}\tmissing\t")
+    else:
+        print(f"{name}\tok\t{version}")
 PY
-    then
-      ok "Python package import works: $package"
+  then
+    fail "Could not inspect Python package metadata."
+    next_step "Run Настроить Voice Recognizer.command and allow Python dependency installation."
+    rm -f "$report_file"
+    echo
+    return
+  fi
+
+  local package
+  local package_state
+  local version
+  while IFS=$'\t' read -r package package_state version; do
+    if [[ "$package_state" == "ok" && -n "$version" ]]; then
+      ok "Python package installed: $package ${version}"
     else
       if [[ "$package" == "pyannote.audio" ]]; then
         fail "Python package missing or broken: $package"
@@ -209,7 +243,8 @@ PY
         next_step "Run Настроить Voice Recognizer.command and allow Python dependency installation."
       fi
     fi
-  done
+  done < "$report_file"
+  rm -f "$report_file"
   echo
 }
 
@@ -239,21 +274,40 @@ check_env() {
 check_models() {
   echo "ASR Models"
   echo "----------"
+  echo "GigaSTT / GigaAM v3 is the local Russian ASR engine. It turns audio into text."
+  echo "Files are created locally by setup: tools/bin/gigastt and .models/gigastt/."
+  echo "Model inventory:"
+  if find "$GIGASTT_MODEL_DIR" -maxdepth 3 \( -type f -o -type l \) -print -quit 2>/dev/null | grep -q .; then
+    find "$GIGASTT_MODEL_DIR" -maxdepth 3 \( -type f -o -type l \) -print 2>/dev/null | sort | while IFS= read -r path; do
+      echo " - ${path#$WORKSPACE_DIR/}"
+    done
+  else
+    echo " - .models/gigastt/ is empty or missing"
+  fi
   if [[ -x "$GIGASTT_BIN" ]]; then
     ok "GigaSTT binary found: tools/bin/gigastt"
   else
     fail "GigaSTT binary is missing."
-    next_step "Run Настроить Voice Recognizer.command and allow GigaSTT setup."
+    next_step "Run Настроить Voice Recognizer.command again and allow stage 4/5: GigaSTT/GigaAM v3."
+    next_step "This downloads the local ASR binary from GitHub into tools/bin/."
   fi
 
   local required_models=(
-    v3_rnnt_encoder.onnx
-    v3_rnnt_decoder.onnx
-    v3_rnnt_joint.onnx
-    v3_vocab.txt
+    "v3_rnnt_decoder.onnx"
+    "v3_rnnt_joint.onnx"
+    "v3_vocab.txt"
+    "punct/rupunct_small_int8.onnx"
+    "punct/config.json"
+    "punct/tokenizer.json"
   )
   local missing=0
   local model
+  if [[ -f "$GIGASTT_MODEL_DIR/v3_rnnt_encoder.onnx" || -f "$GIGASTT_MODEL_DIR/v3_rnnt_encoder_int8.onnx" ]]; then
+    ok "GigaSTT encoder model found: v3_rnnt_encoder.onnx or v3_rnnt_encoder_int8.onnx"
+  else
+    missing=$((missing + 1))
+    fail "GigaSTT encoder model missing: v3_rnnt_encoder.onnx or v3_rnnt_encoder_int8.onnx"
+  fi
   for model in "${required_models[@]}"; do
     if [[ -f "$GIGASTT_MODEL_DIR/$model" ]]; then
       ok "GigaSTT model file found: $model"
@@ -263,7 +317,8 @@ check_models() {
     fi
   done
   if (( missing > 0 )); then
-    next_step "Run Настроить Voice Recognizer.command and allow GigaSTT model download."
+    next_step "Run Настроить Voice Recognizer.command again and allow GigaSTT/GigaAM model download."
+    next_step "Models are stored locally in .models/gigastt/ and are reused on the next run."
   fi
   echo
 }
@@ -319,6 +374,10 @@ print_summary() {
   echo "Summary"
   echo "-------"
   echo "ok=$ok_count warnings=$warn_count failures=$fail_count"
+  if [[ -n "$LOG_FILE" ]]; then
+    echo "Doctor log: $LOG_FILE"
+    echo "Latest doctor log: $LOG_DIR/doctor-latest.log"
+  fi
   if (( fail_count == 0 )); then
     echo "Doctor did not find blocking problems."
   else
@@ -331,6 +390,7 @@ print_summary() {
   exit 1
 }
 
+init_logging
 echo "Voice Recognizer doctor"
 echo "Рабочая папка: $WORKSPACE_DIR"
 echo "Приложение:    $APP_DIR"

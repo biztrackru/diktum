@@ -1,6 +1,6 @@
 # Product Backlog
 
-Дата актуализации: 2026-06-27.
+Дата актуализации: 2026-06-28.
 
 Этот файл - источник правды для следующих задач Codex, Claude Code и review-агентов. `.agents/task-board.md` остается журналом выполненных delivery-блоков и местом для активного claim, но приоритеты брать отсюда.
 
@@ -20,17 +20,38 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - ASR/speaker quality diagnostics пишутся в manifest и показываются в UI.
 - `refresh-quality` backfill обновляет старые manifest без повторного ASR/diarization.
 - Claude UX F1-F16 в основном реализованы в текущем web UI.
+- Интеграция Claude UI-прототипа проверена отдельным UX/product pass; подзадачи записаны в `.agents/claude-prototype-integration-subtasks.md`.
+- Spouse-Mac acceptance пройден: установка на внешнем Mac завершилась без ошибок, тестовый файл распознан, имена спикеров применились, артефакты прошли ручную проверку качества.
 
 ## Главные недоделки из диалогов
 
-- Setup/doctor есть, но нет финального acceptance на чистом пользовательском Mac и нет installable layout, где пользователь не видит структуру dev-проекта.
+- Нет автоматического smoke-релизного набора перед выдачей нового trial pack.
+- Нет installable/update-safe layout, где код приложения отделен от пользовательских данных и runtime cache.
+- Нет release channel/update mechanism: актуальную версию нельзя проверить/скачать из самого продукта.
 - Очередь in-memory: после перезапуска сервера состояние jobs теряется, а долгие/упавшие процессы восстанавливаются только частично.
 - Long-file story закрыта для ASR chunking, но не закрыта как полноценный resume/progress pipeline по этапам и chunks.
 - Batch UX есть, но нуждается в надежной job persistence, resume и итоговом отчете по пачке.
+- Есть мелкие UX-замечания из spouse-Mac теста: поле `Имена спикеров` в настройках запуска преждевременно, верхний workflow stepper выглядит как шум.
 - Выбор движков в UI пока по сути один рабочий backend: GigaSTT/GigaAM v3. Whisper/Handy/Wisper/LM Studio не интегрированы как реальные engine profiles.
 - Диаризация получила диагностику, но не получила системный quality-improvement loop: сравнение конфигураций, улучшение speaker-islands, overlap/uncertain regions и приемочный benchmark.
 - Speaker labeling работает в рамках результата, но speaker memory / повторное узнавание людей по голосу отложено.
 - Нет компактного автоматизированного smoke/e2e набора на коротких безопасных fixtures, который можно гонять перед каждым релизным шагом.
+
+## Claude Prototype Integration Subtasks
+
+Детальный статус и narrowed scopes: `.agents/claude-prototype-integration-subtasks.md`.
+
+Эти подзадачи не меняют текущий P0 порядок, а дробят недоделанные UI-кусочки внутри существующих P0/P1:
+
+- `UX-P0-001 Inline Launch And API Error Recovery` -> `P0-001`, `P0-007`.
+- `UX-P0-002 Compact Journal And Polling Efficiency` -> `P0-003`, `P0-007`.
+- `UX-P0-003 Structured Long-File Progress In UI` -> `P0-003`.
+- `UX-P0-004 Batch Session Summary` -> `P0-004`.
+- `UX-P0-005 Engine Profile UX Completion` -> `P0-005`.
+- `UX-P0-006 Speaker Workspace Details` -> `P0-006`.
+- `UX-P1-001 Text Preview Search And Result Maintenance` -> `P1-009`.
+- `UX-P0-007 Prototype Acceptance Smoke` -> `P0-007`.
+- `UX-P0-008 Launch UI Cleanup` -> `P0-001`, `P0-007`.
 
 ## Task Status Model
 
@@ -42,9 +63,30 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 
 ## Ready Queue
 
+### UX-P0-008 Launch UI Cleanup
+
+Status: DELIVERED (2026-06-28).
+
+Parent backlog: `P0-001 Mac Install Acceptance`, `P0-007 Local Smoke Suite`.
+
+Goal: убрать UX-шум из первого экрана после успешного spouse-Mac acceptance.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- `.agents/claude-prototype-integration-subtasks.md`
+- `.agents/task-board.md`
+
+Acceptance:
+
+- Поле `Имена спикеров` удалено из настроек запуска; именование остается после обработки во вкладке/области спикеров.
+- Верхняя строка workflow `1 Inbox / 2 Настройки / ...` удалена или скрыта как лишний шум.
+- Запуск задач продолжает работать без `speaker_names` в стартовой форме.
+- Python compile и базовая проверка web module проходят.
+
 ### P0-001 Mac Install Acceptance
 
-Status: READY.
+Status: DELIVERED for private trial. Keep only regressions/packaging polish here.
 
 Goal: доказать и довести путь установки до состояния "супруга на Apple Silicon Mac запускает без разработчика".
 
@@ -60,12 +102,74 @@ Scope:
 
 Acceptance:
 
-- `zsh -n app/scripts/*.sh` проходит.
-- `Проверить Voice Recognizer.command` дает понятный отчет без печати токенов.
-- `Настроить Voice Recognizer.command` объясняет Homebrew/ffmpeg/Python/model/HF steps и не требует ручного Terminal happy path.
-- `Запустить` корректно обрабатывает свободный и занятый порт.
-- `Остановить` находит и останавливает серверы.
-- Есть пошаговый сценарий clean/semi-clean Mac acceptance в docs.
+- Delivered: spouse-Mac setup прошел без ошибок.
+- Delivered: тестовый файл распознан.
+- Delivered: имена спикеров применились после результата.
+- Delivered: артефакты прошли ручную проверку качества.
+- Remaining polish/regressions track as separate tasks, not as blockers for private trial.
+
+### P0-007 Local Smoke Suite
+
+Status: READY. Highest current priority.
+
+Goal: получить быстрый набор проверок перед каждым крупным шагом без приватных аудио и без тяжелых моделей.
+
+Scope:
+
+- `app/src/voice_recognizer/`
+- `app/scripts/`
+- `.agents/`
+- docs
+
+Acceptance:
+
+- Одна команда проверяет shell syntax, Python compile, key CLI help, web render JS syntax.
+- Есть synthetic fixtures для manifest/result/speaker-quality без приватного аудио.
+- Smoke suite не требует network и не пишет в git-tracked paths.
+
+### P0-008 Installable Layout And Update-Safe Data Split
+
+Status: READY after `P0-007`.
+
+Goal: отделить обновляемый код от локальных пользовательских данных, чтобы будущий updater мог заменять приложение без риска для `.env`, `.venv`, `.models`, `Inbox`, `outputs`, `logs`.
+
+Scope:
+
+- `app/scripts/build_install_pack.sh`
+- root `*.command`
+- `app/scripts/setup_local_mac.sh`
+- `app/scripts/start_server.sh`
+- `app/scripts/stop_server.sh`
+- docs/install/update notes
+
+Acceptance:
+
+- Trial pack layout явно разделяет `app/` и user/runtime data.
+- Поверхностное обновление заменяет только код/скрипты/docs, не трогая пользовательские данные.
+- Старые trial folders имеют понятный migration/compat story.
+- Setup/start/doctor работают из нового layout.
+
+### P0-009 Release Channel And Manual Updater
+
+Status: READY after `P0-008`.
+
+Goal: дать пользователю способ проверить и скачать актуальную версию из продукта при наличии интернета.
+
+Scope:
+
+- release manifest format, например `version.json`
+- updater script/command
+- optional Web UI button/status
+- docs/release-process
+
+Acceptance:
+
+- Приложение умеет проверить доступную версию и показать changelog.
+- Скачанный zip проверяется по SHA-256 перед применением.
+- Updater отказывается работать при running job.
+- Обновление сохраняет `.env`, `.venv`, `.models`, `Inbox`, `outputs`, `logs`.
+- Есть rollback/backup текущего `app/` на случай неудачи.
+- Хостинг MVP может быть GitHub Releases/private HTTPS bucket; public notarized releases остаются отдельной будущей задачей.
 
 ### P0-002 Durable Job Queue
 
@@ -171,30 +275,11 @@ Acceptance:
 - В exports или diagnostic markdown помечаются short islands/uncertain speaker turns.
 - Настройки не ухудшают очевидные короткие настоящие реплики без отдельного флага.
 
-### P0-007 Local Smoke Suite
-
-Status: READY.
-
-Goal: получить быстрый набор проверок перед каждым крупным шагом без приватных аудио и без тяжелых моделей.
-
-Scope:
-
-- `app/src/voice_recognizer/`
-- `app/scripts/`
-- `.agents/`
-- docs
-
-Acceptance:
-
-- Одна команда проверяет shell syntax, Python compile, key CLI help, web render JS syntax.
-- Есть synthetic fixtures для manifest/result/speaker-quality без приватного аудио.
-- Smoke suite не требует network и не пишет в git-tracked paths.
-
 ## Later Queue
 
 ### P1-008 Installable Folder Layout
 
-Status: READY after P0-001.
+Status: PROMOTED to `P0-008 Installable Layout And Update-Safe Data Split`.
 
 Goal: отделить поставляемый продукт от dev workspace: `VoiceRecognizerLocal/app` + `user-data`.
 

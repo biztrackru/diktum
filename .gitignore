@@ -5,7 +5,9 @@
 !.env.example
 !app/.env.example
 .cache/
+.dist/
 .models/
+logs/
 outputs/
 tools/bin/
 *.egg-info/

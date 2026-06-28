@@ -41,7 +41,7 @@ from voice_recognizer.gigastt import (
 
 
 app = typer.Typer(no_args_is_help=True)
-console = Console()
+console = Console(force_terminal=False, color_system=None)
 
 GIGASTT_SAFE_SINGLE_FILE_SECONDS = 6900.0
 DEFAULT_ASR_CHUNK_SECONDS = 600.0
@@ -785,6 +785,7 @@ def _run_pipeline_to_outputs(
     else:
         if skip_existing and diarization_json.exists() and not diarization_json_current:
             console.print(f"[yellow]Refreshing stale diarization JSON:[/yellow] {diarization_json}")
+        console.print("[cyan]Diarization / pyannote:[/cyan] starting speaker separation")
         run = run_pyannote(
             audio_path=audio_path,
             model_id=pyannote_model_id,
@@ -793,6 +794,7 @@ def _run_pipeline_to_outputs(
             num_speakers=num_speakers,
             min_speakers=min_speakers,
             max_speakers=max_speakers,
+            progress=_log_pipeline_progress,
         )
         diarization_seconds = run.elapsed_seconds
         turns = run.turns
@@ -882,6 +884,11 @@ def _run_pipeline_to_outputs(
         speaker_count=speaker_count,
         asr_engine=asr_engine,
     )
+
+
+def _log_pipeline_progress(message: str) -> None:
+    console.print(f"[cyan]{message}[/cyan]")
+    console.file.flush()
 
 
 @app.command()

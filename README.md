@@ -70,8 +70,53 @@
 1. Дважды кликнуть `Настроить Voice Recognizer.command`.
 2. Разрешить установку Homebrew/ffmpeg/Python-зависимостей/моделей, если setup спросит и объяснит зачем.
 3. Дважды кликнуть `Проверить Voice Recognizer.command`, чтобы получить отчет по Python, ffmpeg, моделям, `.env`, pyannote и портам.
-4. Убедиться, что `.env` содержит `HF_TOKEN`. Setup может принять token скрытым вводом и сохранить его локально.
+4. Убедиться, что `.env` содержит `HF_TOKEN` для pyannote/speaker diarization. Setup объяснит, где взять read-only token, примет его скрытым вводом и сохранит локально.
 5. Дважды кликнуть `Запустить Voice Recognizer.command`.
+
+## Пробный установочный пак для другого Mac
+
+Для первой попытки установки на Mac другого пользователя собрать чистый trial pack:
+
+```bash
+app/scripts/build_install_pack.sh
+```
+
+Скрипт создаст `.dist/Voice Recognizer Trial <timestamp>.zip`.
+
+В архив входят launchers, `app/`, README и install-checklist. В архив намеренно не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио из `Inbox/` и результаты из `outputs/`.
+
+HF token нужен только для pyannote, то есть для разделения записи по спикерам. Для семейной проверки лучше создать отдельный Hugging Face read-only token, передать его отдельно от zip и вставить в setup скрытым вводом. Не вкладывайте реальный token в архив; при необходимости такой тестовый token можно потом отозвать в Hugging Face settings.
+
+GigaSTT / GigaAM v3 - это основной локальный ASR-движок для русского языка: он превращает аудио в текст. Binary и модели не входят в zip, потому что они тяжелые и должны быть подготовлены на целевом Mac. На этапе `4/5: GigaSTT/GigaAM v3` setup скачивает `tools/bin/gigastt`, модели в `.models/gigastt/` и небольшую RUPunct-модель в `.models/gigastt/punct/` для пунктуации/регистра. Если сеть оборвалась, setup можно запустить повторно: готовые части будут переиспользованы.
+
+Setup и doctor пишут локальные диагностические логи в `logs/`. Если после успешного setup web UI все еще пишет `GigaSTT не настроен`, запустите `Проверить Voice Recognizer.command` и пришлите только:
+
+- `logs/setup-latest.log`
+- `logs/doctor-latest.log`
+
+Не пересылайте `.env`, аудио из `Inbox/` или результаты из `outputs/`. Логи печатают инвентарь GigaSTT/GigaAM файлов и missing-компоненты, но не должны печатать HF token.
+
+Первый запуск обработки после чистой установки может дольше стоять на этапе `Диаризация`: pyannote впервые загружает/готовит локальный cache модели разделения спикеров. В журнале процесса должны появляться строки `Diarization / pyannote: ...`; если таких строк нет 10+ минут, пришлите технический лог задачи.
+
+На целевом Mac:
+
+1. Распаковать zip в обычную папку.
+2. Открыть `START_HERE.txt`.
+3. Если macOS показывает предупреждение `не удалось проверить на наличие вредоносного ПО`, один раз запустить `Разблокировать Voice Recognizer.command`.
+4. Затем дважды кликнуть `Настроить Voice Recognizer.command`.
+5. После setup запустить `Проверить Voice Recognizer.command`.
+6. Если doctor показывает `failures=0`, запустить `Запустить Voice Recognizer.command`.
+7. Провести сценарий из `docs/spouse-mac-install-trial.md`.
+
+Про macOS Gatekeeper: текущий trial pack не подписан Apple Developer ID и не notarized, поэтому macOS может предлагать `Переместить в корзину`. Малый workaround - снять quarantine-метку с распакованной папки через `Разблокировать Voice Recognizer.command` или Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/path/to/Voice Recognizer Trial"
+```
+
+Правильное release-решение на будущее - Developer ID signing + notarization.
+
+Если на этапе Homebrew/ffmpeg видны ошибки `Failed to download resource`, `curl: (28)` или `curl: (35)` для `ghcr.io`, это сетевой сбой скачивания bottle'ов Homebrew. Остановите setup, попробуйте другую сеть/позже и запустите `Настроить Voice Recognizer.command` снова. Setup можно повторять безопасно.
 
 Ручной путь для разработки:
 
@@ -83,7 +128,7 @@ app/scripts/setup_gigastt.sh
 cp app/.env.example .env
 ```
 
-В `.env` нужно добавить Hugging Face token с доступом к `pyannote/speaker-diarization-community-1`:
+В `.env` нужно добавить Hugging Face read-only token с доступом к `pyannote/speaker-diarization-community-1`:
 
 ```bash
 HF_TOKEN=hf_your_token_here

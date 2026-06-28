@@ -150,6 +150,14 @@ VoiceRecognizerLocal/
 - добавить команду/скрипт `doctor`; готово;
 - сделать человекочитаемый отчет окружения; готово на уровне скрипта, требуется clean Mac acceptance;
 - развивать текущую структуру `app/` без смешивания кода приложения и локальных пользовательских данных; готово как dev/product hybrid.
+- добавить сборку безопасного trial pack для установки на другом Mac; готово через `app/scripts/build_install_pack.sh`.
+
+Trial pack status:
+
+- архив создается в `.dist/Voice Recognizer Trial <timestamp>.zip`;
+- в архив входят launchers, `app/`, README, `START_HERE.txt`, selected docs, пустые `Inbox/` и `outputs/`;
+- в архив не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио, generated transcripts и приватные outputs;
+- приемочный сценарий для Mac супруги записан в `docs/spouse-mac-install-trial.md`.
 
 Следующий implementation scope: `P0-001 Mac Install Acceptance` из `.agents/product-backlog.md`.
 
@@ -157,8 +165,8 @@ VoiceRecognizerLocal/
 
 - прогон setup/doctor/start/stop на чистом или почти чистом пользовательском Mac;
 - проверка сценария без ручного Terminal;
-- решение, оставляем ли dev-folder layout для первых пользователей или переходим к `VoiceRecognizerLocal/app + user-data`;
-- короткая инструкция "что делать, если модель/токен/ffmpeg не настроены" прямо в setup/doctor output и README.
+- практический отчет по trial pack после установки на целевой Mac;
+- решение после trial: оставляем dev-folder layout для первых пользователей или переходим к `VoiceRecognizerLocal/app + user-data`.
 
 ## Acceptance Criteria
 
