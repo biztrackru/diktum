@@ -150,6 +150,82 @@ def test_manifest_result_payload_quality_fixture() -> None:
         )
 
 
+def test_durable_job_store_restores_queue_and_interrupts_running() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        inbox = root / "Inbox"
+        output_dir = root / "outputs" / "pipeline"
+        inbox.mkdir()
+        output_dir.mkdir(parents=True)
+        source = inbox / "synthetic.m4a"
+        source.write_bytes(b"audio")
+        with web.JOBS_LOCK:
+            web.JOBS.clear()
+            web.JOB_QUEUE.clear()
+            web.RUNNING_PROCESSES.clear()
+            queued = web._create_job(
+                source=source,
+                output_dir=output_dir,
+                start=None,
+                duration=None,
+                device="cpu",
+                asr_engine="gigastt-gigaam-v3",
+                speaker_mode="auto",
+                num_speakers=None,
+                min_speakers=None,
+                max_speakers=None,
+                speaker_names="",
+                overwrite=False,
+                root=root,
+            )
+            web.JOBS[queued.id] = queued
+            running = web._create_job(
+                source=source,
+                output_dir=output_dir,
+                start=0.0,
+                duration=10.0,
+                device="cpu",
+                asr_engine="gigastt-gigaam-v3",
+                speaker_mode="exact",
+                num_speakers=2,
+                min_speakers=None,
+                max_speakers=None,
+                speaker_names="",
+                overwrite=False,
+                root=root,
+            )
+            running.status = "running"
+            running.process_pid = 12345
+            web.JOBS[running.id] = running
+            web.JOB_QUEUE.append(queued.id)
+            web._save_jobs_locked(root)
+
+        with web.JOBS_LOCK:
+            web.JOBS.clear()
+            web.JOB_QUEUE.clear()
+            web.RUNNING_PROCESSES.clear()
+        web._initialize_job_store(root, start_worker=False)
+
+        with web.JOBS_LOCK:
+            restored_queued = web.JOBS[queued.id]
+            restored_running = web.JOBS[running.id]
+            assert web.JOB_QUEUE == [queued.id]
+            assert restored_queued.status == "queued"
+            assert restored_running.status == "failed"
+            assert restored_running.process_pid is None
+            assert restored_running.returncode == -1
+            assert any("перезапущен" in line for line in restored_running.log)
+        payloads = web._job_list(root)
+        statuses = {payload["id"]: payload["status"] for payload in payloads}
+        assert statuses[queued.id] == "queued"
+        assert statuses[running.id] == "failed"
+
+        web._delete_job(queued.id, root)
+        stored = json.loads(web._job_store_path(root).read_text(encoding="utf-8"))
+        assert queued.id not in stored["queue"]
+        assert all(job["id"] != queued.id for job in stored["jobs"])
+
+
 def test_web_render_js_syntax() -> None:
     node = shutil.which("node")
     assert node, "node is required for web render JS syntax smoke"

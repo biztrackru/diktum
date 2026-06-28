@@ -44,6 +44,7 @@ MAX_JSON_BODY_BYTES = _env_int("VOICE_RECOGNIZER_MAX_JSON_KB", 1024) * 1024
 MAX_UPLOAD_BYTES = _env_int("VOICE_RECOGNIZER_MAX_UPLOAD_MB", 4096) * 1024 * 1024
 # Chunk size for streaming large result files/ranges to the browser.
 RESPONSE_STREAM_CHUNK_BYTES = 1024 * 1024
+JOB_STORE_VERSION = 1
 # Hostnames that are always considered local. The configured bind host is added
 # at request time. Used to block DNS-rebinding and cross-origin (CSRF) requests.
 LOCAL_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})
@@ -106,6 +107,7 @@ def run_web_server(
         host=host,
         port=port,
     )
+    _initialize_job_store(config.root)
 
     class Handler(VoiceRecognizerHandler):
         web_config = config
@@ -233,7 +235,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/jobs/") and parsed.path.endswith("/cancel"):
             job_id = parsed.path.removeprefix("/api/jobs/").removesuffix("/cancel").strip("/")
             try:
-                job = _cancel_job(job_id)
+                job = _cancel_job(job_id, self.web_config.root)
             except ValueError as error:
                 self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
                 return
@@ -323,7 +325,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/api/jobs/"):
             job_id = parsed.path.removeprefix("/api/jobs/").split("/", 1)[0].strip("/")
             try:
-                _delete_job(job_id)
+                _delete_job(job_id, self.web_config.root)
             except ValueError as error:
                 self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
                 return
@@ -3694,6 +3696,181 @@ def _create_job(
     return job
 
 
+def _job_store_path(root: Path) -> Path:
+    return root / ".cache" / "jobs" / "web_jobs.json"
+
+
+def _initialize_job_store(root: Path, *, start_worker: bool = True) -> None:
+    now = time.time()
+    payload = _read_job_store(root)
+    restored_jobs: dict[str, Job] = {}
+    stored_queue: list[str] = []
+    if isinstance(payload.get("queue"), list):
+        stored_queue = [str(item) for item in payload["queue"]]
+    for raw_job in payload.get("jobs", []):
+        if not isinstance(raw_job, dict):
+            continue
+        job = _job_from_store(raw_job, root, now=now)
+        if job is not None:
+            restored_jobs[job.id] = job
+
+    with JOBS_LOCK:
+        JOBS.clear()
+        JOB_QUEUE.clear()
+        RUNNING_PROCESSES.clear()
+        JOBS.update(restored_jobs)
+        for job_id in stored_queue:
+            job = JOBS.get(job_id)
+            if job is not None and job.status == "queued" and job_id not in JOB_QUEUE:
+                JOB_QUEUE.append(job_id)
+        queued_by_age = sorted(
+            (job for job in JOBS.values() if job.status == "queued" and job.id not in JOB_QUEUE),
+            key=lambda item: item.created_at,
+        )
+        JOB_QUEUE.extend(job.id for job in queued_by_age)
+        _save_jobs_locked(root)
+    if start_worker:
+        _start_job_worker(root)
+
+
+def _read_job_store(root: Path) -> dict[str, object]:
+    path = _job_store_path(root)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _job_from_store(payload: dict[str, object], root: Path, *, now: float) -> Job | None:
+    try:
+        job_id = str(payload["id"])
+        source_path = _stored_path(root, payload.get("source_path"))
+        output_dir = _stored_path(root, payload.get("output_dir"))
+        markdown_path = _stored_path(root, payload.get("markdown_path"))
+        manifest_path = _stored_path(root, payload.get("manifest_path"))
+        command = [str(item) for item in payload.get("command", []) if str(item)]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not job_id or not command:
+        return None
+    status = str(payload.get("status") or "queued")
+    log = [str(item) for item in payload.get("log", [])][-MAX_LOG_LINES:] if isinstance(payload.get("log"), list) else []
+    returncode = _optional_int_value(payload.get("returncode"))
+    completed_at = _optional_float_value(payload.get("completed_at"))
+    cancel_requested = bool(payload.get("cancel_requested"))
+    process_pid = _optional_int_value(payload.get("process_pid"))
+    if status in {"running", "canceling"}:
+        previous_status = status
+        status = "failed" if previous_status == "running" else "canceled"
+        completed_at = now
+        returncode = -1 if previous_status == "running" else returncode
+        cancel_requested = False
+        process_pid = None
+        log.append(
+            "Сервер был перезапущен во время выполнения задачи. "
+            "Она помечена как прерванная; при необходимости запустите ее заново.\n"
+        )
+    return Job(
+        id=job_id,
+        source_path=source_path,
+        source_name=str(payload.get("source_name") or source_path.name),
+        command=command,
+        output_dir=output_dir,
+        markdown_path=markdown_path,
+        manifest_path=manifest_path,
+        start=_optional_float_value(payload.get("start")),
+        duration=_optional_float_value(payload.get("duration")),
+        device=str(payload.get("device") or "auto"),
+        asr_engine=str(payload.get("asr_engine") or DEFAULT_ASR_ENGINE),
+        speaker_mode=str(payload.get("speaker_mode") or "auto"),
+        num_speakers=_optional_int_value(payload.get("num_speakers")),
+        min_speakers=_optional_int_value(payload.get("min_speakers")),
+        max_speakers=_optional_int_value(payload.get("max_speakers")),
+        speaker_names=str(payload.get("speaker_names") or ""),
+        created_at=_optional_float_value(payload.get("created_at")) or now,
+        status=status,
+        returncode=returncode,
+        completed_at=completed_at,
+        log=log,
+        cancel_requested=cancel_requested,
+        process_pid=process_pid,
+    )
+
+
+def _stored_path(root: Path, value: object) -> Path:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("empty path")
+    path = Path(raw)
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _store_path(root: Path, path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def _save_jobs_locked(root: Path) -> None:
+    payload = {
+        "version": JOB_STORE_VERSION,
+        "saved_at": time.time(),
+        "queue": [job_id for job_id in JOB_QUEUE if job_id in JOBS],
+        "jobs": [_job_to_store(job, root) for job in sorted(JOBS.values(), key=lambda item: item.created_at)],
+    }
+    path = _job_store_path(root)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_suffix(".json.tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(path)
+    except OSError as error:
+        print(f"[job-store] could not save {path}: {error}", file=sys.stderr, flush=True)
+
+
+def _job_to_store(job: Job, root: Path) -> dict[str, object]:
+    return {
+        "id": job.id,
+        "source_path": _store_path(root, job.source_path),
+        "source_name": job.source_name,
+        "command": job.command,
+        "output_dir": _store_path(root, job.output_dir),
+        "markdown_path": _store_path(root, job.markdown_path),
+        "manifest_path": _store_path(root, job.manifest_path),
+        "start": job.start,
+        "duration": job.duration,
+        "device": job.device,
+        "asr_engine": job.asr_engine,
+        "speaker_mode": job.speaker_mode,
+        "num_speakers": job.num_speakers,
+        "min_speakers": job.min_speakers,
+        "max_speakers": job.max_speakers,
+        "speaker_names": job.speaker_names,
+        "created_at": job.created_at,
+        "status": job.status,
+        "returncode": job.returncode,
+        "completed_at": job.completed_at,
+        "log": job.log[-MAX_LOG_LINES:],
+        "cancel_requested": job.cancel_requested,
+        "process_pid": job.process_pid,
+    }
+
+
+def _start_job_worker(root: Path) -> None:
+    global WORKER_THREAD
+    with JOBS_LOCK:
+        if not JOB_QUEUE:
+            return
+        if WORKER_THREAD is not None and WORKER_THREAD.is_alive():
+            return
+        WORKER_THREAD = threading.Thread(target=_job_worker, args=(root,), daemon=True)
+        WORKER_THREAD.start()
+
+
 def _run_job(job_id: str, root: Path) -> None:
     with JOBS_LOCK:
         job = JOBS.get(job_id)
@@ -3703,8 +3880,10 @@ def _run_job(job_id: str, root: Path) -> None:
             job.status = "canceled"
             job.completed_at = time.time()
             job.log.append("Canceled before start\n")
+            _save_jobs_locked(root)
             return
         job.status = "running"
+        _save_jobs_locked(root)
 
     env = os.environ.copy()
     env.update(_read_dotenv(root / ".env"))
@@ -3730,11 +3909,12 @@ def _run_job(job_id: str, root: Path) -> None:
         job.process_pid = process.pid
         RUNNING_PROCESSES[job_id] = process
         cancel_now = job.cancel_requested
+        _save_jobs_locked(root)
     if cancel_now:
         _terminate_process(process)
     assert process.stdout is not None
     for line in process.stdout:
-        _append_job_log(job_id, line)
+        _append_job_log(job_id, line, root)
     returncode = process.wait()
     with JOBS_LOCK:
         RUNNING_PROCESSES.pop(job_id, None)
@@ -3751,9 +3931,10 @@ def _run_job(job_id: str, root: Path) -> None:
             job.status = "done" if returncode == 0 else "failed"
         if returncode != 0 and job.status != "canceled":
             job.log.append(f"Process exited with code {returncode}\n")
+        _save_jobs_locked(root)
 
 
-def _cancel_job(job_id: str) -> Job:
+def _cancel_job(job_id: str, root: Path) -> Job:
     process: subprocess.Popen[str] | None = None
     with JOBS_LOCK:
         job = JOBS.get(job_id)
@@ -3766,6 +3947,7 @@ def _cancel_job(job_id: str) -> Job:
             job.status = "canceled"
             job.completed_at = time.time()
             job.log.append("Canceled before start\n")
+            _save_jobs_locked(root)
             return job
         if job.status in {"running", "canceling"}:
             if not job.cancel_requested:
@@ -3773,6 +3955,7 @@ def _cancel_job(job_id: str) -> Job:
             job.cancel_requested = True
             job.status = "canceling"
             process = RUNNING_PROCESSES.get(job_id)
+            _save_jobs_locked(root)
         else:
             return job
     if process is not None:
@@ -3780,7 +3963,7 @@ def _cancel_job(job_id: str) -> Job:
     return job
 
 
-def _delete_job(job_id: str) -> None:
+def _delete_job(job_id: str, root: Path) -> None:
     with JOBS_LOCK:
         job = JOBS.get(job_id)
         if job is None:
@@ -3790,6 +3973,7 @@ def _delete_job(job_id: str) -> None:
         if job_id in JOB_QUEUE:
             JOB_QUEUE.remove(job_id)
         JOBS.pop(job_id, None)
+        _save_jobs_locked(root)
 
 
 def _terminate_process(process: subprocess.Popen[str]) -> None:
@@ -3805,13 +3989,11 @@ def _terminate_process(process: subprocess.Popen[str]) -> None:
 
 
 def _enqueue_job(job_id: str, root: Path) -> None:
-    global WORKER_THREAD
     with JOBS_LOCK:
-        JOB_QUEUE.append(job_id)
-        if WORKER_THREAD is not None and WORKER_THREAD.is_alive():
-            return
-        WORKER_THREAD = threading.Thread(target=_job_worker, args=(root,), daemon=True)
-        WORKER_THREAD.start()
+        if job_id not in JOB_QUEUE:
+            JOB_QUEUE.append(job_id)
+        _save_jobs_locked(root)
+    _start_job_worker(root)
 
 
 def _job_worker(root: Path) -> None:
@@ -3821,17 +4003,19 @@ def _job_worker(root: Path) -> None:
                 return
             job_id = JOB_QUEUE.pop(0)
             job = JOBS.get(job_id)
+            _save_jobs_locked(root)
         if job is None:
             continue
         _run_job(job_id, root)
 
 
-def _append_job_log(job_id: str, line: str) -> None:
+def _append_job_log(job_id: str, line: str, root: Path) -> None:
     with JOBS_LOCK:
         job = JOBS[job_id]
         job.log.append(line)
         if len(job.log) > MAX_LOG_LINES:
             job.log = job.log[-MAX_LOG_LINES:]
+        _save_jobs_locked(root)
 
 
 def _result_list(root: Path) -> list[dict[str, object]]:
@@ -4020,6 +4204,7 @@ def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
         job.status = "running"
         job.speaker_names = speaker_names
         job.log.append("Applying speaker names without rerunning ASR/diarization\n")
+        _save_jobs_locked(root)
     try:
         outputs = rewrite_manifest_exports(job.manifest_path, speaker_names=parse_speaker_names(speaker_names))
     except Exception as error:
@@ -4029,6 +4214,7 @@ def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
             job.completed_at = time.time()
             job.status = "failed"
             job.log.append(f"Apply names failed: {error}\n")
+            _save_jobs_locked(root)
         raise ValueError("apply speaker names failed") from error
 
     with JOBS_LOCK:
@@ -4041,6 +4227,7 @@ def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
         job.log.append(f"Edited TXT: {outputs.get('edited_text')}\n")
         if len(job.log) > MAX_LOG_LINES:
             job.log = job.log[-MAX_LOG_LINES:]
+        _save_jobs_locked(root)
         return job
 
 

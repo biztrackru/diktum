@@ -16,7 +16,7 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - ASR chunking для файлов длиннее лимита GigaSTT; дефолт 600 секунд для сохранения пунктуации.
 - Web UI: Inbox, upload, queue/results views, batch subset selection, result tabs, exports, speaker samples/names, disk results from `outputs/`.
 - Start/stop/setup/doctor `.command` и shell helpers существуют.
-- Очередь умеет отменять queued/running jobs и удалять завершенные jobs из UI.
+- Очередь умеет отменять queued/running jobs, удалять завершенные jobs из UI и сохранять job history в `.cache/jobs/web_jobs.json` между перезапусками.
 - ASR/speaker quality diagnostics пишутся в manifest и показываются в UI.
 - `refresh-quality` backfill обновляет старые manifest без повторного ASR/diarization.
 - Claude UX F1-F16 в основном реализованы в текущем web UI.
@@ -28,7 +28,7 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 
 - Нет installable/update-safe layout, где код приложения отделен от пользовательских данных и runtime cache.
 - Нет release channel/update mechanism: актуальную версию нельзя проверить/скачать из самого продукта.
-- Очередь in-memory: после перезапуска сервера состояние jobs теряется, а долгие/упавшие процессы восстанавливаются только частично.
+- Очередь получила disk-backed history; полноценный resume по этапам/chunks остается в `P0-003`.
 - Long-file story закрыта для ASR chunking, но не закрыта как полноценный resume/progress pipeline по этапам и chunks.
 - Batch UX есть, но нуждается в надежной job persistence, resume и итоговом отчете по пачке.
 - Есть мелкие UX-замечания из spouse-Mac теста: поле `Имена спикеров` в настройках запуска преждевременно, верхний workflow stepper выглядит как шум.
@@ -223,7 +223,7 @@ Acceptance:
 
 ### P0-002 Durable Job Queue
 
-Status: READY.
+Status: DELIVERED (2026-06-29). JSON-backed local job store delivered; chunk-level resume remains `P0-003`.
 
 Goal: заменить in-memory-only queue на локально устойчивую очередь, чтобы перезапуск web UI не делал долгие задачи невидимыми.
 
@@ -235,11 +235,11 @@ Scope:
 
 Acceptance:
 
-- Jobs сохраняются на диск в local-only runtime path.
-- После перезапуска сервера UI показывает queued/running/done/failed/canceled историю.
-- Orphan running jobs после restart помечаются понятным статусом, без ложного `running`.
-- Cancel/delete controls продолжают работать.
-- Generated outputs не попадают в git.
+- Delivered: jobs сохраняются на диск в local-only runtime path `.cache/jobs/web_jobs.json`.
+- Delivered: после перезапуска сервера UI/API получают queued/done/failed/canceled историю из job store.
+- Delivered: orphan `running`/`canceling` jobs после restart помечаются понятным статусом, без ложного `running`.
+- Delivered: cancel/delete controls продолжают работать и обновляют job store.
+- Delivered: generated outputs/job store остаются local-only и не попадают в git.
 
 ### P0-003 Long-File Resume And Progress
 

@@ -1502,6 +1502,32 @@ Checks:
 - Browser QA on `http://127.0.0.1:8797/`: page identity `Voice Recognizer`, console error/warn count 0, `Носников...` Text tab opens edited Markdown with names and `email`, clean mode opens edited TXT without timecodes, Files tab shows `Основной результат` with `Улучшенный Markdown` and `Улучшенный TXT`, no edited file is labeled `служебный файл`;
 - UI `Спикеры` -> `Применить имена` completed with edited links still present; manifest contains `speaker_names_updated_at` and edited output paths.
 
+### Codex - P0-002 Durable Job Queue First Slice
+
+Status: DELIVERED (2026-06-29), Codex. Persist web jobs in a local runtime job store.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- `tests/test_local_smoke.py`
+- `README.md`
+- `docs/implementation-plan.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Goal:
+
+- save web jobs to `.cache/jobs/web_jobs.json` with atomic writes;
+- load queued/done/failed/canceled history on server startup;
+- restore orphan `running` as `failed` and `canceling` as `canceled`, with a human-readable restart note;
+- continue queued jobs after restart by starting the worker from restored queue;
+- persist cancel/delete/log/status changes.
+
+Checks:
+
+- `app/scripts/smoke_local.sh`: multipart 6/6, local smoke 5/5, transcript repair 5/5;
+- `tests/test_local_smoke.py::test_durable_job_store_restores_queue_and_interrupts_running` verifies queued restore, running interruption, `_job_list()` API status, delete persistence and local-only job store path.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.
@@ -1511,11 +1537,10 @@ Current recommended order:
 1. `P0-010 Transcript Quality Repair And Postprocessing`
 2. `P0-008 Installable Layout And Update-Safe Data Split`
 3. `P0-009 Release Channel And Manual Updater`
-4. `P0-002 Durable Job Queue`
-5. `P0-003 Long-File Resume And Progress`
-6. `P0-004 Batch Reliability`
-7. `P0-005 Engine Registry And Model Profiles`
-8. `P0-006 Speaker Quality Improvement Loop`
+4. `P0-003 Long-File Resume And Progress`
+5. `P0-004 Batch Reliability`
+6. `P0-005 Engine Registry And Model Profiles`
+7. `P0-006 Speaker Quality Improvement Loop`
 
 `P0-001 Mac Install Acceptance` is delivered for the private trial. Keep only regressions/packaging polish there.
 `P0-007 Local Smoke Suite` is delivered. Run `app/scripts/smoke_local.sh` before release/trial-pack steps and meaningful code changes.
