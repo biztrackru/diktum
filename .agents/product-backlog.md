@@ -169,11 +169,11 @@ Acceptance:
 
 - Delivered first slice: raw transcript, manifest and raw engine JSON are not overwritten; `repair-quality` writes separate `*.repair.json`.
 - Delivered first slice: pipeline detects suspicious spans from ASR/speaker diagnostics, broken casing, all-caps artifacts, very short fragments, punctuation anomalies and speaker-island boundaries.
-- Delivered first edited slice: repaired text is exported separately as `*.edited.md`, `*.edited.txt`, `*.repair.json`.
+- Delivered first edited slice: repaired text is exported separately as `*.edited.md`, `*.edited.txt`, `*.repair.json`; new `process` runs write edited exports too.
 - Repair uses surrounding context and preserves timestamps/speaker attribution; uncertain edits are marked rather than silently accepted.
 - Local LLM/text repair is optional and local-first, for example LM Studio OpenAI-compatible endpoint; no external text/audio call happens by default.
 - Delivered first slice: UI result file links include sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when they exist.
-- UI lets the user see richer raw/clean/edited status and compare variants directly.
+- Delivered first UI slice: Text preview and primary Markdown link prefer edited exports; raw/clean files remain available in the Files tab.
 - A private local benchmark can compare selected problematic snippets against reference text without committing transcripts, audio or outputs.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 

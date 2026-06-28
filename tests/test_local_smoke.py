@@ -138,10 +138,16 @@ def test_manifest_result_payload_quality_fixture() -> None:
         assert payload["status"] == "done"
         assert payload["asr_quality"] == asr_quality
         assert payload["speaker_quality"] == speaker_quality
-        assert payload["files"][0]["key"] == "detailed_markdown"
-        assert any(file["key"] == "edited_markdown" for file in payload["files"])
-        assert any(file["key"] == "edited_text" for file in payload["files"])
-        assert any(file["key"] == "repair_json" and file["url"].endswith("synthetic.repair.json") for file in payload["files"])
+        assert payload["markdown_url"].endswith("synthetic.edited.md")
+        assert payload["files"][0]["key"] == "edited_markdown"
+        assert payload["files"][0]["label"] == "Улучшенный Markdown"
+        assert any(file["key"] == "edited_text" and file["label"] == "Улучшенный TXT" for file in payload["files"])
+        assert any(
+            file["key"] == "repair_json"
+            and file["label"] == "Диагностика JSON"
+            and file["url"].endswith("synthetic.repair.json")
+            for file in payload["files"]
+        )
 
 
 def test_web_render_js_syntax() -> None:

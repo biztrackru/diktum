@@ -365,7 +365,7 @@ set +a
 .venv/bin/voice-recognizer refresh-quality outputs/pipeline
 ```
 
-Чтобы найти места, где итоговый текст стоит проверить или чинить отдельным repair-проходом, можно построить диагностические отчеты и portable edited exports без повторного ASR/диаризации:
+Новые запуски автоматически создают улучшенные читаемые экспорты `*.edited.md` и `*.edited.txt`; именно они используются как основной текст в интерфейсе, а raw/clean exports остаются для проверки. Чтобы достроить такие файлы для старых результатов без повторного ASR/диаризации, можно запустить repair-проход:
 
 ```bash
 .venv/bin/voice-recognizer repair-quality outputs/pipeline --recursive

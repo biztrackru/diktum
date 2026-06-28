@@ -2769,8 +2769,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function transcriptPreviewFile(files, mode) {{
       const preferredKeys = mode === "clean"
-        ? ["clean_markdown", "clean_text", "clean_timestamps_markdown", "timeline_text", "detailed_markdown"]
-        : ["clean_timestamps_markdown", "timeline_text", "detailed_markdown", "clean_markdown", "clean_text"];
+        ? ["edited_text", "clean_markdown", "clean_text", "edited_markdown", "clean_timestamps_markdown", "timeline_text", "detailed_markdown"]
+        : ["edited_markdown", "clean_timestamps_markdown", "timeline_text", "detailed_markdown", "clean_markdown", "clean_text"];
       for (const key of preferredKeys) {{
         const file = files.find((item) => item.key === key);
         if (file) return file;
@@ -2786,6 +2786,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         const line = rawLine.trim();
         if (!line) continue;
         if (line.startsWith("# ")) continue;
+        if (line.startsWith("> ")) continue;
         if (line.startsWith("## ")) {{
           if (current) turns.push(current);
           current = {{ speaker: line.replace(/^##\\s+/, ""), lines: [] }};
@@ -2986,9 +2987,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function renderExportGroups(files) {{
       if (!files.length) return '<div class="empty">Файлы результата пока не найдены</div>';
       const groups = [
-        {{ title: "Для чтения", keys: ["detailed_markdown"] }},
-        {{ title: "Для редактуры", keys: ["clean_timestamps_markdown", "clean_markdown"] }},
+        {{ title: "Основной результат", keys: ["edited_markdown", "edited_text"] }},
+        {{ title: "Raw / проверка", keys: ["detailed_markdown"] }},
+        {{ title: "Чистые raw-версии", keys: ["clean_timestamps_markdown", "clean_markdown"] }},
         {{ title: "Текстовые версии", keys: ["clean_text", "timeline_text"] }},
+        {{ title: "Диагностика", keys: ["repair_json"] }},
       ];
       const byKey = new Map(files.map((file) => [file.key, file]));
       const rendered = groups.map((group) => {{
@@ -3018,11 +3021,14 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function exportHint(key) {{
       const hints = {{
+        edited_markdown: "улучшенный Markdown с таймкодами и спикерами",
+        edited_text: "улучшенный TXT без таймкодов",
         detailed_markdown: "общий файл с таймкодами и спикерами",
         clean_timestamps_markdown: "чистый Markdown с таймкодами",
         clean_markdown: "чистый Markdown без таймкодов",
         clean_text: "TXT без таймкодов",
         timeline_text: "TXT с таймкодами",
+        repair_json: "служебная карта подозрительных фрагментов",
       }};
       return hints[key] || "служебный файл";
     }}
@@ -3860,7 +3866,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
     clip_start, clip_duration = _manifest_clip_window(manifest, manifest_path)
     source_name = _manifest_source_name(manifest, manifest_path)
     source_freshness = _manifest_source_freshness(manifest, manifest_path, root, completed_at)
-    markdown_url = next((file["url"] for file in files if file.get("key") == "detailed_markdown"), None)
+    markdown_url = _primary_markdown_url(files)
     speaker_count = _optional_int_value(manifest.get("speaker_count"))
     constraint_num, constraint_min, constraint_max = _manifest_speaker_constraints(manifest)
     speaker_mode = "exact" if constraint_num else "range" if constraint_min or constraint_max else "auto"
@@ -3973,7 +3979,7 @@ def _job_payload(job: Job, root: Path) -> dict[str, object]:
     manifest = _read_manifest(job.manifest_path)
     files = _manifest_files(manifest, root, manifest_path=job.manifest_path)
     samples = _manifest_samples(manifest, root)
-    markdown_url = _output_url(root, job.markdown_path) if job.markdown_path.exists() else None
+    markdown_url = _primary_markdown_url(files) or (_output_url(root, job.markdown_path) if job.markdown_path.exists() else None)
     return {
         "id": job.id,
         "source_name": job.source_name,
@@ -4003,6 +4009,8 @@ def _job_payload(job: Job, root: Path) -> dict[str, object]:
 
 
 def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
+    from voice_recognizer.cli import parse_speaker_names, rewrite_manifest_exports
+
     with JOBS_LOCK:
         job = JOBS.get(job_id)
         if job is None:
@@ -4012,119 +4020,43 @@ def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
         job.status = "running"
         job.speaker_names = speaker_names
         job.log.append("Applying speaker names without rerunning ASR/diarization\n")
+    try:
+        outputs = rewrite_manifest_exports(job.manifest_path, speaker_names=parse_speaker_names(speaker_names))
+    except Exception as error:
+        with JOBS_LOCK:
+            job = JOBS[job_id]
+            job.returncode = 1
+            job.completed_at = time.time()
+            job.status = "failed"
+            job.log.append(f"Apply names failed: {error}\n")
+        raise ValueError("apply speaker names failed") from error
 
-    command = [
-        sys.executable,
-        "-m",
-        "voice_recognizer.cli",
-        "process",
-        _cli_path(root, job.source_path),
-        "--output-dir",
-        _cli_path(root, job.output_dir),
-        "--asr-engine",
-        job.asr_engine,
-        "--device",
-        job.device,
-        "--speaker-names",
-        speaker_names,
-    ]
-    if job.start is not None:
-        command.extend(["--start", str(job.start)])
-    if job.duration is not None:
-        command.extend(["--duration", str(job.duration)])
-    if job.num_speakers is not None:
-        command.extend(["--num-speakers", str(job.num_speakers)])
-    if job.min_speakers is not None:
-        command.extend(["--min-speakers", str(job.min_speakers)])
-    if job.max_speakers is not None:
-        command.extend(["--max-speakers", str(job.max_speakers)])
-
-    env = os.environ.copy()
-    env.update(_read_dotenv(root / ".env"))
-    env.setdefault("COLUMNS", "180")
-    env.setdefault("NO_COLOR", "1")
-    env.setdefault("TERM", "dumb")
-    process = subprocess.run(
-        command,
-        cwd=root,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
     with JOBS_LOCK:
         job = JOBS[job_id]
-        job.returncode = process.returncode
+        job.returncode = 0
         job.completed_at = time.time()
-        job.status = "done" if process.returncode == 0 else "failed"
-        job.log.extend(process.stdout.splitlines(keepends=True))
+        job.status = "done"
+        job.markdown_path = outputs.get("edited_markdown", job.markdown_path)
+        job.log.append(f"Edited Markdown: {outputs.get('edited_markdown')}\n")
+        job.log.append(f"Edited TXT: {outputs.get('edited_text')}\n")
         if len(job.log) > MAX_LOG_LINES:
             job.log = job.log[-MAX_LOG_LINES:]
-        if process.returncode != 0:
-            job.log.append(f"Apply names exited with code {process.returncode}\n")
         return job
 
 
 def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) -> dict[str, object]:
-    manifest_path = _find_result_manifest(result_id, root)
-    manifest = _read_manifest(manifest_path)
-    source_path = _manifest_source_path(manifest, root)
-    start, duration = _manifest_clip_window(manifest, manifest_path)
-    num_speakers, min_speakers, max_speakers = _manifest_speaker_constraints(manifest)
-    asr_engine = normalize_asr_engine(str(manifest.get("asr_engine") or DEFAULT_ASR_ENGINE))
-    device = str(manifest.get("device") or "auto")
-    command = [
-        sys.executable,
-        "-m",
-        "voice_recognizer.cli",
-        "process",
-        _cli_path(root, source_path),
-        "--output-dir",
-        _cli_path(root, manifest_path.parent),
-        "--asr-engine",
-        asr_engine,
-        "--device",
-        device,
-        "--speaker-names",
-        speaker_names,
-    ]
-    if start is not None:
-        command.extend(["--start", str(start)])
-    if duration is not None:
-        command.extend(["--duration", str(duration)])
-    if num_speakers is not None:
-        command.extend(["--num-speakers", str(num_speakers)])
-    if min_speakers is not None:
-        command.extend(["--min-speakers", str(min_speakers)])
-    if max_speakers is not None:
-        command.extend(["--max-speakers", str(max_speakers)])
+    from voice_recognizer.cli import parse_speaker_names, rewrite_manifest_exports
 
-    env = os.environ.copy()
-    env.update(_read_dotenv(root / ".env"))
-    env.setdefault("COLUMNS", "180")
-    env.setdefault("NO_COLOR", "1")
-    env.setdefault("TERM", "dumb")
-    process = subprocess.run(
-        command,
-        cwd=root,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if process.returncode != 0:
-        # Keep subprocess output in the server log only; do not echo internal
-        # paths/details back to the HTTP client.
-        print(
-            f"[apply-speaker-names] exit {process.returncode}\n{process.stdout[-2000:]}",
-            file=sys.stderr,
-            flush=True,
-        )
-        raise ValueError(f"apply speaker names failed with exit code {process.returncode}")
+    manifest_path = _find_result_manifest(result_id, root)
+    outputs = rewrite_manifest_exports(manifest_path, speaker_names=parse_speaker_names(speaker_names))
     payload = _result_payload(manifest_path, root)
     if payload is None:
         raise ValueError("result manifest disappeared")
-    payload["log"] = process.stdout.splitlines(keepends=True)[-MAX_LOG_LINES:]
+    payload["log"] = [
+        "Speaker names applied without rerunning ASR/diarization\n",
+        f"Edited Markdown: {outputs.get('edited_markdown')}\n",
+        f"Edited TXT: {outputs.get('edited_text')}\n",
+    ]
     return payload
 
 
@@ -4358,6 +4290,8 @@ def _read_manifest(path: Path) -> dict[str, object]:
 
 def _manifest_files(manifest: dict[str, object], root: Path, *, manifest_path: Path | None = None) -> list[dict[str, str]]:
     labels = {
+        "edited_markdown": "Улучшенный Markdown",
+        "edited_text": "Улучшенный TXT",
         "detailed_markdown": "Общий Markdown",
         "clean_timestamps_markdown": "Чистый + время",
         "clean_markdown": "Чистый",
@@ -4370,21 +4304,29 @@ def _manifest_files(manifest: dict[str, object], root: Path, *, manifest_path: P
     files = []
     for key, label in labels.items():
         value = outputs.get(key)
-        if not value:
+        if value:
+            path = (root / str(value)).resolve()
+        elif key == "edited_markdown" and manifest_path is not None:
+            path = _edited_export_paths(manifest_path)[0]
+        elif key == "edited_text" and manifest_path is not None:
+            path = _edited_export_paths(manifest_path)[1]
+        else:
             continue
-        path = (root / str(value)).resolve()
         if path.exists():
             files.append({"key": key, "label": label, "url": _output_url(root, path) or ""})
     if manifest_path is not None:
-        edited_markdown_path, edited_text_path = _edited_export_paths(manifest_path)
-        if edited_markdown_path.exists() and not any(file.get("key") == "edited_markdown" for file in files):
-            files.append({"key": "edited_markdown", "label": "Edited Markdown", "url": _output_url(root, edited_markdown_path) or ""})
-        if edited_text_path.exists() and not any(file.get("key") == "edited_text" for file in files):
-            files.append({"key": "edited_text", "label": "Edited TXT", "url": _output_url(root, edited_text_path) or ""})
         repair_path = _repair_report_path(manifest_path)
         if repair_path.exists() and not any(file.get("key") == "repair_json" for file in files):
-            files.append({"key": "repair_json", "label": "Repair JSON", "url": _output_url(root, repair_path) or ""})
+            files.append({"key": "repair_json", "label": "Диагностика JSON", "url": _output_url(root, repair_path) or ""})
     return files
+
+
+def _primary_markdown_url(files: list[dict[str, str]]) -> str | None:
+    for key in ("edited_markdown", "detailed_markdown", "clean_timestamps_markdown", "clean_markdown"):
+        match = next((file for file in files if file.get("key") == key and file.get("url")), None)
+        if match:
+            return match["url"]
+    return None
 
 
 def _repair_report_path(manifest_path: Path) -> Path:

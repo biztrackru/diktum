@@ -54,6 +54,59 @@ def test_render_edited_segments_reassigns_short_speaker_island() -> None:
     assert "да которая" in edited[0].text
 
 
+def test_rewrite_manifest_exports_updates_edited_speaker_names_without_rerun() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        output_dir = root / "outputs" / "pipeline"
+        output_dir.mkdir(parents=True)
+        asr_json = output_dir / "synthetic.gigastt.json"
+        manifest_path = output_dir / "synthetic.manifest.json"
+        words = [
+            {"start": 0.0, "end": 0.4, "word": "е.", "confidence": 0.99, "speaker": 0},
+            {"start": 0.5, "end": 0.9, "word": "мейл", "confidence": 0.99, "speaker": 0},
+            {"start": 1.0, "end": 1.4, "word": "с", "confidence": 0.99, "speaker": 1},
+            {"start": 1.5, "end": 1.9, "word": "генерится", "confidence": 0.99, "speaker": 1},
+        ]
+        asr_json.write_text(
+            json.dumps({"duration": 2.0, "text": "е. мейл с генерится", "words": words}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "manifest_version": 2,
+                    "status": "done",
+                    "source": "Inbox/synthetic.m4a",
+                    "created_at": 100.0,
+                    "completed_at": 123.0,
+                    "duration": 2.0,
+                    "word_count": len(words),
+                    "speaker_count": 2,
+                    "asr_engine": "gigastt-gigaam-v3",
+                    "asr_json": str(asr_json),
+                    "outputs": {},
+                    "speaker_names": {},
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        outputs = cli.rewrite_manifest_exports(manifest_path, speaker_names={0: "Андрей", 1: "Артем"})
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        edited_markdown = outputs["edited_markdown"].read_text(encoding="utf-8")
+        edited_text = outputs["edited_text"].read_text(encoding="utf-8")
+
+        assert manifest["completed_at"] == 123.0
+        assert manifest["speaker_names"] == {"1": "Андрей", "2": "Артем"}
+        assert manifest["outputs"]["edited_markdown"].endswith("synthetic.edited.md")
+        assert "## Андрей" in edited_markdown
+        assert "Андрей:" in edited_text
+        assert "Email" in edited_text
+        assert "[00:" not in edited_text
+
+
 def test_write_manifest_repair_report_does_not_mutate_manifest() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -110,6 +163,11 @@ def test_write_manifest_repair_report_does_not_mutate_manifest() -> None:
         assert manifest_path.read_text(encoding="utf-8") == before
         assert (output_dir / "synthetic.edited.md").exists()
         assert (output_dir / "synthetic.edited.txt").exists()
+        edited_markdown = (output_dir / "synthetic.edited.md").read_text(encoding="utf-8")
+        edited_text = (output_dir / "synthetic.edited.txt").read_text(encoding="utf-8")
+        assert "## Эксперт" in edited_markdown
+        assert "Эксперт:" in edited_text
+        assert "[00:" not in edited_text
         report = json.loads(repair_path.read_text(encoding="utf-8"))
         assert report["mode"] == "diagnostic-only"
         assert report["summary"]["suspicious_span_count"] == span_count

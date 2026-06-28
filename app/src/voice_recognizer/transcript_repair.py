@@ -226,7 +226,7 @@ def write_edited_exports(
             current_speaker = segment.speaker
         markdown_lines.append(f"`{interval}` {segment.text}")
         markdown_lines.append("")
-        text_lines.append(f"{label} [{interval}]: {segment.text}")
+        text_lines.append(f"{label}: {segment.text}")
     markdown_path.write_text("\n".join(markdown_lines).rstrip() + "\n", encoding="utf-8")
     text_path.write_text("\n".join(text_lines).rstrip() + "\n", encoding="utf-8")
     return EditedExportResult(markdown_path=markdown_path, text_path=text_path, segment_count=len(edited_segments))

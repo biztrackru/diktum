@@ -1470,6 +1470,38 @@ Checks:
 - `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli repair-quality outputs/pipeline/Носников_дапринт_+_нфло.manifest.json --force`;
 - manual spot-check of `outputs/pipeline/Носников_дапринт_+_нфло.edited.md`: fixed `Е. Мейл`, `с генерится`, `из за`, `куда то`, `какую то`, repeated `по по` and standalone `пуб` artifacts in early sample.
 
+### Codex - P0-010 Edited Result As Primary Text
+
+Status: DELIVERED (2026-06-29), Codex. Make edited exports the primary readable result while preserving raw artifacts.
+
+Scope:
+
+- `app/src/voice_recognizer/transcript_repair.py`
+- `app/src/voice_recognizer/cli.py`
+- `app/src/voice_recognizer/web.py`
+- `app/scripts/smoke_local.sh`
+- `tests/test_transcript_repair.py`
+- `tests/test_local_smoke.py`
+- `README.md`
+- `docs/transcript-quality-repair.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Goal:
+
+- new `process` runs write `*.edited.md`, `*.edited.txt` and `*.repair.json`;
+- Text tab and result `Markdown` link prefer `*.edited.md`;
+- clean preview prefers `*.edited.txt`, now without timestamps;
+- Files tab groups edited exports under `Основной результат` instead of showing them as service files;
+- applying speaker names uses `relabel-speakers`/`rewrite_manifest_exports` and never reruns ASR or pyannote.
+
+Checks:
+
+- `app/scripts/smoke_local.sh`: multipart 6/6, local smoke 4/4, transcript repair 5/5;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli relabel-speakers outputs/pipeline/Носников_дапринт_+_нфло.manifest.json --speaker-names "1=Андрей,2=Артем"` completed without ASR/diarization;
+- Browser QA on `http://127.0.0.1:8797/`: page identity `Voice Recognizer`, console error/warn count 0, `Носников...` Text tab opens edited Markdown with names and `email`, clean mode opens edited TXT without timecodes, Files tab shows `Основной результат` with `Улучшенный Markdown` and `Улучшенный TXT`, no edited file is labeled `служебный файл`;
+- UI `Спикеры` -> `Применить имена` completed with edited links still present; manifest contains `speaker_names_updated_at` and edited output paths.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.

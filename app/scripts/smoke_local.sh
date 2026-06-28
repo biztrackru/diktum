@@ -70,6 +70,7 @@ run_quiet "$PYTHON" -m voice_recognizer.cli process --help
 run_quiet "$PYTHON" -m voice_recognizer.cli batch-process --help
 run_quiet "$PYTHON" -m voice_recognizer.cli refresh-quality --help
 run_quiet "$PYTHON" -m voice_recognizer.cli repair-quality --help
+run_quiet "$PYTHON" -m voice_recognizer.cli relabel-speakers --help
 run_quiet "$PYTHON" -m voice_recognizer.cli web --help
 
 section "Synthetic fixtures"

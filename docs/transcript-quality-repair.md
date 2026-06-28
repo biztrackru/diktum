@@ -108,6 +108,6 @@ Scoring should track:
 2. Done: add synthetic tests for span detection without private data.
 3. Done: add edited export generation for punctuation/casing repair with a deterministic local rule-based baseline.
 4. Add optional LM Studio repair profile behind explicit config.
-5. Partly done: UI result links expose sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when present.
+5. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
 
 This order gives us a safe baseline before asking a neural model to rewrite anything.

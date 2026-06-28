@@ -54,6 +54,8 @@ MIN_ASR_TAIL_SECONDS = 5.0
 class PipelineOutputs:
     asr_json: Path
     diarization_json: Path
+    edited_markdown: Path
+    edited_text: Path
     detailed_markdown: Path
     clean_timestamps_markdown: Path
     clean_markdown: Path
@@ -241,6 +243,10 @@ def _parse_speaker_names(value: str | None) -> dict[int, str]:
         if index is not None and name:
             names[index] = name
     return names
+
+
+def parse_speaker_names(value: str | None) -> dict[int, str]:
+    return _parse_speaker_names(value)
 
 
 def _speaker_index_from_key(value: str) -> int | None:
@@ -468,11 +474,20 @@ def _render_transcript_bundle(
     engine_seconds: float | None,
     speaker_names: dict[int, str],
 ) -> dict[str, Path]:
+    edited_markdown = output_dir / f"{stem}.edited.md"
+    edited_text = output_dir / f"{stem}.edited.txt"
     detailed_markdown = output_dir / f"{stem}.transcript.md"
     clean_timestamps_markdown = output_dir / f"{stem}.clean.timestamps.md"
     clean_markdown = output_dir / f"{stem}.clean.md"
     clean_text = output_dir / f"{stem}.clean.txt"
     timeline_text = output_dir / f"{stem}.timeline.txt"
+    write_edited_exports(
+        markdown_path=edited_markdown,
+        text_path=edited_text,
+        title=source.name,
+        segments=segments,
+        speaker_names=speaker_names,
+    )
     write_readable_markdown(
         detailed_markdown,
         title=source.stem,
@@ -508,6 +523,8 @@ def _render_transcript_bundle(
         include_timestamps=True,
     )
     return {
+        "edited_markdown": edited_markdown,
+        "edited_text": edited_text,
         "detailed_markdown": detailed_markdown,
         "clean_timestamps_markdown": clean_timestamps_markdown,
         "clean_markdown": clean_markdown,
@@ -609,6 +626,74 @@ def _write_manifest(
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def rewrite_manifest_exports(
+    manifest_path: Path,
+    *,
+    speaker_names: dict[int, str],
+    max_gap_seconds: float = 1.8,
+    smooth_speakers: bool = True,
+    speaker_island_max_words: int = 2,
+    speaker_island_max_seconds: float = 1.2,
+    speaker_bridge_gap_seconds: float = 0.8,
+) -> dict[str, Path]:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read manifest: {error}") from error
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest is not a JSON object")
+
+    asr_json = _manifest_artifact_path(manifest_path, manifest.get("asr_json"), required=True)
+    diarization_json = _manifest_artifact_path(manifest_path, manifest.get("diarization_json"), required=False)
+    result = load_result(asr_json)
+    result_for_speakers = result
+    if diarization_json is not None:
+        result_for_speakers = assign_speakers(
+            result,
+            load_diarization_json(diarization_json),
+            smooth=smooth_speakers,
+            island_max_words=speaker_island_max_words,
+            island_max_seconds=speaker_island_max_seconds,
+            bridge_gap_seconds=speaker_bridge_gap_seconds,
+        )
+    segments = segment_words(result_for_speakers.words, max_gap_seconds=max_gap_seconds)
+    source_label = _manifest_source_label(manifest, manifest_path)
+    outputs = _render_transcript_bundle(
+        source=Path(source_label),
+        stem=_manifest_output_stem(manifest_path),
+        output_dir=manifest_path.parent,
+        result=result_for_speakers,
+        segments=segments,
+        engine_seconds=None,
+        speaker_names=speaker_names,
+    )
+    manifest_outputs = manifest.get("outputs")
+    if not isinstance(manifest_outputs, dict):
+        manifest_outputs = {}
+    manifest_outputs.update({key: _manifest_path_value(path) for key, path in outputs.items()})
+    manifest["outputs"] = manifest_outputs
+    manifest["speaker_names"] = {str(speaker + 1): name for speaker, name in speaker_names.items()}
+    manifest["speaker_quality"] = analyze_speaker_quality(segments)
+    if not isinstance(manifest.get("asr_quality"), dict):
+        manifest["asr_quality"] = analyze_asr_quality(result)
+    manifest["speaker_names_updated_at"] = time.time()
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    write_repair_report(
+        _repair_report_path(manifest_path),
+        build_repair_report(
+            manifest_path=manifest_path,
+            source_name=source_label,
+            asr_engine=str(manifest.get("asr_engine") or ""),
+            segments=segments,
+            asr_quality=manifest.get("asr_quality") if isinstance(manifest.get("asr_quality"), dict) else None,
+            speaker_quality=manifest.get("speaker_quality") if isinstance(manifest.get("speaker_quality"), dict) else None,
+            speaker_names=speaker_names,
+        ),
+    )
+    return outputs
 
 
 def _refresh_manifest_quality(
@@ -735,9 +820,20 @@ def _repair_report_path(manifest_path: Path) -> Path:
 def _edited_export_paths(manifest_path: Path) -> tuple[Path, Path]:
     name = manifest_path.name
     if name.endswith(".manifest.json"):
-        stem = name.removesuffix(".manifest.json")
+        stem = _manifest_output_stem(manifest_path)
         return manifest_path.with_name(f"{stem}.edited.md"), manifest_path.with_name(f"{stem}.edited.txt")
     return manifest_path.with_suffix(".edited.md"), manifest_path.with_suffix(".edited.txt")
+
+
+def _manifest_output_stem(manifest_path: Path) -> str:
+    return manifest_path.name.removesuffix(".manifest.json")
+
+
+def _manifest_path_value(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(path)
 
 
 def _manifest_source_label(manifest: dict[str, object], manifest_path: Path) -> str:
@@ -969,6 +1065,20 @@ def _run_pipeline_to_outputs(
         created_at=created_at,
         completed_at=time.time(),
     )
+    write_repair_report(
+        _repair_report_path(manifest_json),
+        build_repair_report(
+            manifest_path=manifest_json,
+            source_name=source.name,
+            asr_engine=asr_engine,
+            segments=segments,
+            asr_quality=asr_quality,
+            speaker_quality=speaker_quality,
+            speaker_names=speaker_names,
+        ),
+    )
+    console.print(f"[green]Edited Markdown:[/green] {outputs['edited_markdown']}")
+    console.print(f"[green]Edited TXT:[/green] {outputs['edited_text']}")
     console.print(f"[green]Markdown:[/green] {outputs['detailed_markdown']}")
     console.print(f"[green]Clean Markdown:[/green] {outputs['clean_markdown']}")
     console.print(f"[green]Clean TXT:[/green] {outputs['clean_text']}")
@@ -976,6 +1086,8 @@ def _run_pipeline_to_outputs(
     return PipelineOutputs(
         asr_json=asr_json,
         diarization_json=diarization_json,
+        edited_markdown=outputs["edited_markdown"],
+        edited_text=outputs["edited_text"],
         detailed_markdown=outputs["detailed_markdown"],
         clean_timestamps_markdown=outputs["clean_timestamps_markdown"],
         clean_markdown=outputs["clean_markdown"],
@@ -1379,6 +1491,31 @@ def repair_quality(
             table.add_row(str(manifest_path), "skipped", "-", "yes" if write_edited else "no", str(repair_path))
     console.print(table)
     console.print(f"[cyan]Updated: {updated}, skipped: {skipped}, failed: {failed}.[/cyan]")
+
+
+@app.command("relabel-speakers")
+def relabel_speakers(
+    manifest: Path = typer.Argument(..., exists=True, readable=True, help="Manifest JSON file to relabel."),
+    speaker_names: str = typer.Option(..., "--speaker-names", help="Speaker name mapping, for example: 1=Андрей,2=Ольга"),
+    max_gap_seconds: float = typer.Option(1.8, "--max-gap"),
+    smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),
+    speaker_island_max_words: int = typer.Option(2, "--speaker-island-max-words"),
+    speaker_island_max_seconds: float = typer.Option(1.2, "--speaker-island-max-seconds"),
+    speaker_bridge_gap_seconds: float = typer.Option(0.8, "--speaker-bridge-gap"),
+) -> None:
+    """Rewrite transcript exports with speaker names without rerunning ASR or diarization."""
+    outputs = rewrite_manifest_exports(
+        manifest,
+        speaker_names=_parse_speaker_names(speaker_names),
+        max_gap_seconds=max_gap_seconds,
+        smooth_speakers=smooth_speakers,
+        speaker_island_max_words=speaker_island_max_words,
+        speaker_island_max_seconds=speaker_island_max_seconds,
+        speaker_bridge_gap_seconds=speaker_bridge_gap_seconds,
+    )
+    console.print(f"[green]Edited Markdown:[/green] {outputs['edited_markdown']}")
+    console.print(f"[green]Edited TXT:[/green] {outputs['edited_text']}")
+    console.print("[cyan]Speaker names applied without rerunning ASR or diarization.[/cyan]")
 
 
 @app.command("batch-process")
