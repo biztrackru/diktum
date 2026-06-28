@@ -22,10 +22,10 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - Claude UX F1-F16 в основном реализованы в текущем web UI.
 - Интеграция Claude UI-прототипа проверена отдельным UX/product pass; подзадачи записаны в `.agents/claude-prototype-integration-subtasks.md`.
 - Spouse-Mac acceptance пройден: установка на внешнем Mac завершилась без ошибок, тестовый файл распознан, имена спикеров применились, артефакты прошли ручную проверку качества.
+- Local smoke suite добавлен: одна команда проверяет shell syntax, Python compile, CLI help, synthetic quality fixtures, manifest/result payload и web JS syntax без приватных аудио и тяжелых моделей.
 
 ## Главные недоделки из диалогов
 
-- Нет автоматического smoke-релизного набора перед выдачей нового trial pack.
 - Нет installable/update-safe layout, где код приложения отделен от пользовательских данных и runtime cache.
 - Нет release channel/update mechanism: актуальную версию нельзя проверить/скачать из самого продукта.
 - Очередь in-memory: после перезапуска сервера состояние jobs теряется, а долгие/упавшие процессы восстанавливаются только частично.
@@ -36,7 +36,6 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - Итоговый текст иногда теряет смысл из-за ASR-ошибок, плохой пунктуации/регистра, склеек слов и разрывов одной фразы между спикерами; диагностика есть, но semantic repair и сравнение raw/edited результата не реализованы.
 - Диаризация получила диагностику, но не получила системный quality-improvement loop: сравнение конфигураций, улучшение speaker-islands, overlap/uncertain regions и приемочный benchmark.
 - Speaker labeling работает в рамках результата, но speaker memory / повторное узнавание людей по голосу отложено.
-- Нет компактного автоматизированного smoke/e2e набора на коротких безопасных fixtures, который можно гонять перед каждым релизным шагом.
 
 ## Claude Prototype Integration Subtasks
 
@@ -134,7 +133,7 @@ Acceptance:
 
 ### P0-007 Local Smoke Suite
 
-Status: READY. Highest current priority.
+Status: DELIVERED (2026-06-29).
 
 Goal: получить быстрый набор проверок перед каждым крупным шагом без приватных аудио и без тяжелых моделей.
 
@@ -147,13 +146,13 @@ Scope:
 
 Acceptance:
 
-- Одна команда проверяет shell syntax, Python compile, key CLI help, web render JS syntax.
-- Есть synthetic fixtures для manifest/result/speaker-quality без приватного аудио.
-- Smoke suite не требует network и не пишет в git-tracked paths.
+- Delivered: `app/scripts/smoke_local.sh` проверяет shell syntax, Python compile, key CLI help, web render JS syntax.
+- Delivered: `tests/test_local_smoke.py` содержит synthetic fixtures для ASR quality, speaker quality и manifest/result payload без приватного аудио.
+- Delivered: smoke suite не запускает GigaSTT/pyannote, не требует network и пишет временные файлы только в temp.
 
 ### P0-010 Transcript Quality Repair And Postprocessing
 
-Status: READY after `P0-007`. User-requested quality track; coordinate with `P0-005` and `P0-006`.
+Status: READY. Highest current quality priority; coordinate with `P0-005` and `P0-006`.
 
 Goal: получить качественный итоговый текст, в котором raw ASR остается доступным, а отдельный edited/repair слой исправляет пунктуацию, регистр, очевидные ASR-искажения, разрывы фраз между соседними сегментами и подозрительные места без выдумывания нового содержания.
 
@@ -178,7 +177,7 @@ Acceptance:
 
 ### P0-008 Installable Layout And Update-Safe Data Split
 
-Status: READY after `P0-007`.
+Status: READY after `P0-010` or when packaging work is explicitly selected.
 
 Goal: отделить обновляемый код от локальных пользовательских данных, чтобы будущий updater мог заменять приложение без риска для `.env`, `.venv`, `.models`, `Inbox`, `outputs`, `logs`.
 

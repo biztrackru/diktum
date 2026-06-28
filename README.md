@@ -176,6 +176,14 @@ set +a
 .venv/bin/voice-recognizer check-pyannote-access
 ```
 
+Локальная smoke-проверка для разработчиков и AI-агентов перед trial pack или крупной правкой:
+
+```bash
+app/scripts/smoke_local.sh
+```
+
+Она не запускает GigaSTT/pyannote, не требует приватных аудио и не пишет результаты в `Inbox/` или `outputs/`. Проверяются shell syntax, Python compile, ключевые CLI help, синтетические quality fixtures, manifest/result payload и web UI JavaScript syntax. Для проверки JavaScript нужен локальный `node`.
+
 ## Как пользоваться без Codex
 
 Самый простой способ запуска на macOS:

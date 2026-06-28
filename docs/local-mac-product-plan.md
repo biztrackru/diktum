@@ -157,13 +157,13 @@ Trial pack status:
 - архив создается в `.dist/Voice Recognizer Trial <timestamp>.zip`;
 - в архив входят launchers, `app/`, README, `START_HERE.txt`, selected docs, пустые `Inbox/` и `outputs/`;
 - в архив не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио, generated transcripts и приватные outputs;
-- приемочный сценарий для Mac супруги записан в `docs/spouse-mac-install-trial.md` и пройден для private trial.
+- приемочный сценарий для Mac супруги записан в `docs/spouse-mac-install-trial.md` и пройден для private trial;
+- перед новой сборкой можно запускать `app/scripts/smoke_local.sh`.
 
-Следующий implementation scope: `P0-007 Local Smoke Suite`, затем `P0-008 Installable Layout And Update-Safe Data Split` и `P0-009 Release Channel And Manual Updater` из `.agents/product-backlog.md`.
+Следующий implementation scope для упаковки: `P0-008 Installable Layout And Update-Safe Data Split`, затем `P0-009 Release Channel And Manual Updater` из `.agents/product-backlog.md`.
 
 Не закрыто:
 
-- автоматический smoke suite перед каждой новой сборкой trial pack;
 - переход от dev/product hybrid к update-safe `VoiceRecognizerLocal/app + user-data`;
 - ручной updater/release channel без риска для `.env`, моделей, Inbox и outputs;
 - повторяемый отчет release acceptance перед выдачей сборки новому пользователю.

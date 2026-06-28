@@ -17,11 +17,11 @@
 - UX F1-F16 из Claude-прототипа в основном перенесены;
 - start/stop/setup/doctor helpers существуют;
 - quality diagnostics для ASR и speaker fragmentation показываются в manifest/UI;
-- private trial на внешнем Mac пройден: setup, запуск, тестовая обработка, speaker names и артефакты проверены.
+- private trial на внешнем Mac пройден: setup, запуск, тестовая обработка, speaker names и артефакты проверены;
+- local smoke suite готов: `app/scripts/smoke_local.sh`.
 
 Не закрыто полностью:
 
-- автоматический smoke suite перед новым trial/release pack;
 - installable/update-safe layout после private trial;
 - durable job queue после перезапуска сервера;
 - полноценный long-file resume/progress по chunks/stages;
@@ -79,7 +79,6 @@ Research-gate перед реализацией:
 
 Дальнейшие задачи:
 
-- `P0-007 Local Smoke Suite` перед новыми trial packs;
 - `P0-008 Installable Layout And Update-Safe Data Split`;
 - `P0-009 Release Channel And Manual Updater`.
 

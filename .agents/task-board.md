@@ -1359,23 +1359,54 @@ Checks:
 - `git diff --check`;
 - staged secret scan before commit.
 
+### Codex - P0-007 Local Smoke Suite
+
+Status: DELIVERED (2026-06-29), Codex. Add a fast local smoke command before release/trial-pack and meaningful code changes.
+
+Scope:
+
+- `app/scripts/smoke_local.sh`
+- `tests/test_local_smoke.py`
+- `README.md`
+- `AGENTS.md`
+- `docs/implementation-plan.md`
+- `docs/local-mac-product-plan.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Goal:
+
+- one command checks shell syntax, Python compile, key CLI help and web render JS syntax;
+- synthetic fixtures cover ASR quality, speaker quality and manifest/result payload without private audio;
+- smoke suite avoids GigaSTT, pyannote, network, `Inbox/` and `outputs/`.
+
+Checks:
+
+- `app/scripts/smoke_local.sh`;
+- included shell syntax for `app/scripts/*.sh` and root `*.command`;
+- included Python compile with `PYTHONPYCACHEPREFIX` under temp;
+- included CLI help for root, `process`, `batch-process`, `refresh-quality`, `web`;
+- included `tests/test_multipart.py` direct run: 6/6 passed;
+- included `tests/test_local_smoke.py` direct run: 4/4 passed;
+- included web render JS syntax via `node --check` on temp extracted inline script.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.
 
 Current recommended order:
 
-1. `P0-007 Local Smoke Suite`
-2. `P0-010 Transcript Quality Repair And Postprocessing`
-3. `P0-008 Installable Layout And Update-Safe Data Split`
-4. `P0-009 Release Channel And Manual Updater`
-5. `P0-002 Durable Job Queue`
-6. `P0-003 Long-File Resume And Progress`
-7. `P0-004 Batch Reliability`
-8. `P0-005 Engine Registry And Model Profiles`
-9. `P0-006 Speaker Quality Improvement Loop`
+1. `P0-010 Transcript Quality Repair And Postprocessing`
+2. `P0-008 Installable Layout And Update-Safe Data Split`
+3. `P0-009 Release Channel And Manual Updater`
+4. `P0-002 Durable Job Queue`
+5. `P0-003 Long-File Resume And Progress`
+6. `P0-004 Batch Reliability`
+7. `P0-005 Engine Registry And Model Profiles`
+8. `P0-006 Speaker Quality Improvement Loop`
 
 `P0-001 Mac Install Acceptance` is delivered for the private trial. Keep only regressions/packaging polish there.
+`P0-007 Local Smoke Suite` is delivered. Run `app/scripts/smoke_local.sh` before release/trial-pack steps and meaningful code changes.
 
 The old Claude UX implementation list is completed enough for the current product stage and remains available as historical context in `.agents/next-task-ux-implementation.md`, `docs/ux-audit.md`, and `docs/ux-acceptance-scenarios.md`.
 
