@@ -3855,7 +3855,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
         manifest_modified_at = time.time()
     completed_at = _optional_float_value(manifest.get("completed_at")) or manifest_modified_at
     created_at = _optional_float_value(manifest.get("created_at")) or completed_at
-    files = _manifest_files(manifest, root)
+    files = _manifest_files(manifest, root, manifest_path=manifest_path)
     samples = _manifest_samples(manifest, root)
     clip_start, clip_duration = _manifest_clip_window(manifest, manifest_path)
     source_name = _manifest_source_name(manifest, manifest_path)
@@ -3971,7 +3971,7 @@ def _job_list(root: Path) -> list[dict[str, object]]:
 
 def _job_payload(job: Job, root: Path) -> dict[str, object]:
     manifest = _read_manifest(job.manifest_path)
-    files = _manifest_files(manifest, root)
+    files = _manifest_files(manifest, root, manifest_path=job.manifest_path)
     samples = _manifest_samples(manifest, root)
     markdown_url = _output_url(root, job.markdown_path) if job.markdown_path.exists() else None
     return {
@@ -4356,7 +4356,7 @@ def _read_manifest(path: Path) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _manifest_files(manifest: dict[str, object], root: Path) -> list[dict[str, str]]:
+def _manifest_files(manifest: dict[str, object], root: Path, *, manifest_path: Path | None = None) -> list[dict[str, str]]:
     labels = {
         "detailed_markdown": "Общий Markdown",
         "clean_timestamps_markdown": "Чистый + время",
@@ -4375,7 +4375,18 @@ def _manifest_files(manifest: dict[str, object], root: Path) -> list[dict[str, s
         path = (root / str(value)).resolve()
         if path.exists():
             files.append({"key": key, "label": label, "url": _output_url(root, path) or ""})
+    if manifest_path is not None:
+        repair_path = _repair_report_path(manifest_path)
+        if repair_path.exists() and not any(file.get("key") == "repair_json" for file in files):
+            files.append({"key": "repair_json", "label": "Repair JSON", "url": _output_url(root, repair_path) or ""})
     return files
+
+
+def _repair_report_path(manifest_path: Path) -> Path:
+    name = manifest_path.name
+    if name.endswith(".manifest.json"):
+        return manifest_path.with_name(name.removesuffix(".manifest.json") + ".repair.json")
+    return manifest_path.with_suffix(".repair.json")
 
 
 def _manifest_samples(manifest: dict[str, object], root: Path) -> list[dict[str, str]]:

@@ -1419,6 +1419,28 @@ Checks:
 - `PYTHONPATH=app/src .venv/bin/python -m compileall app/src tests`;
 - `app/scripts/smoke_local.sh`: includes `repair-quality --help`, multipart 6/6, local smoke 4/4, transcript repair 2/2.
 
+### Codex - P0-010 Repair Report Result Link
+
+Status: DELIVERED (2026-06-29), Codex. Show existing repair reports in result file links without mutating manifest files.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- `tests/test_local_smoke.py`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Goal:
+
+- detect sibling `*.repair.json` files next to `*.manifest.json`;
+- include them in disk/job result `files` payload as `repair_json`;
+- keep existing manifest-declared file links unchanged.
+
+Checks:
+
+- `PYTHONPATH=app/src .venv/bin/python tests/test_local_smoke.py`: 4/4 passed;
+- `app/scripts/smoke_local.sh`: multipart 6/6, local smoke 4/4, transcript repair 2/2.
+
 ## Next Implementation Tasks
 
 Use `.agents/product-backlog.md`.
