@@ -42,6 +42,8 @@ def _env_int(name: str, default: int) -> int:
 MAX_JSON_BODY_BYTES = _env_int("VOICE_RECOGNIZER_MAX_JSON_KB", 1024) * 1024
 # Uploaded media can be large, but must still be bounded to avoid filling the disk.
 MAX_UPLOAD_BYTES = _env_int("VOICE_RECOGNIZER_MAX_UPLOAD_MB", 4096) * 1024 * 1024
+# Chunk size for streaming large result files/ranges to the browser.
+RESPONSE_STREAM_CHUNK_BYTES = 1024 * 1024
 # Hostnames that are always considered local. The configured bind host is added
 # at request time. Used to block DNS-rebinding and cross-origin (CSRF) requests.
 LOCAL_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})
@@ -3507,7 +3509,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             self.end_headers()
             if not head_only:
                 with target.open("rb") as file:
-                    shutil.copyfileobj(file, self.wfile)
+                    _copy_file_range(file, self.wfile)
             return
 
         start, end = byte_range
@@ -3521,7 +3523,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if not head_only:
             with target.open("rb") as file:
                 file.seek(start)
-                self.wfile.write(file.read(length))
+                _copy_file_range(file, self.wfile, length)
 
     def _content_length(self) -> int:
         raw = self.headers.get("Content-Length")
@@ -3537,7 +3539,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     def _read_json_body(self) -> dict[str, object]:
         content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
-        if content_type and content_type != "application/json":
+        if content_type != "application/json":
             raise ValueError("Content-Type must be application/json")
         length = self._content_length()
         if length > MAX_JSON_BODY_BYTES:
@@ -3556,11 +3558,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if length > MAX_UPLOAD_BYTES:
             raise ValueError("upload exceeds the maximum allowed size")
         self.web_config.inbox.mkdir(parents=True, exist_ok=True)
+        created_targets: list[Path] = []
 
         def open_target(part: FilePart):
             # Reject unsupported/oversized names before opening anything on disk.
             target = _unique_inbox_path(self.web_config.inbox, part.filename)
             handle = target.open("wb")
+            created_targets.append(target)
 
             def finalize(size: int) -> dict[str, object]:
                 return _inbox_file_payload(target)
@@ -3576,7 +3580,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                 field_name="files",
                 open_target=open_target,
             )
-        except MultipartError as error:
+        except (MultipartError, OSError, ValueError) as error:
+            for target in created_targets:
+                try:
+                    target.unlink(missing_ok=True)
+                except OSError:
+                    pass
             raise ValueError(str(error)) from error
         if not saved:
             raise ValueError("no supported files uploaded")
@@ -4408,6 +4417,20 @@ def _speaker_names_payload_to_cli(value: object) -> str:
         if clean:
             lines.append(f"{key}={clean}")
     return "\n".join(lines)
+
+
+def _copy_file_range(source: object, target: object, length: int | None = None) -> None:
+    remaining = length
+    while remaining is None or remaining > 0:
+        chunk_size = RESPONSE_STREAM_CHUNK_BYTES
+        if remaining is not None:
+            chunk_size = min(chunk_size, remaining)
+        chunk = source.read(chunk_size)
+        if not chunk:
+            return
+        target.write(chunk)
+        if remaining is not None:
+            remaining -= len(chunk)
 
 
 def _parse_range_header(value: str | None, file_size: int) -> tuple[int, int] | None:

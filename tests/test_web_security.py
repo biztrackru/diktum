@@ -146,6 +146,15 @@ def test_non_json_content_type_rejected():
         srv.close()
 
 
+def test_missing_json_content_type_rejected():
+    srv = _Server()
+    try:
+        status, _ = srv.request("POST", "/api/jobs", body=b"{}")
+        assert status == 400, status
+    finally:
+        srv.close()
+
+
 def test_same_origin_delete_allowed_through_guard():
     # DELETE carries no body/Content-Type; guard must allow same-origin and the
     # handler then reports the missing job (not a 403).
@@ -195,6 +204,49 @@ def test_upload_too_large():
         srv.close()
 
 
+def test_malformed_upload_removes_partial_file():
+    srv = _Server()
+    try:
+        body = (
+            f"--{BOUNDARY}\r\n"
+            'Content-Disposition: form-data; name="files"; filename="partial.mp3"\r\n'
+            "Content-Type: audio/mpeg\r\n"
+            "\r\n"
+            "partial-bytes-without-final-boundary"
+        ).encode()
+        status, _ = srv.request(
+            "POST",
+            "/api/uploads",
+            headers={"Content-Type": f"multipart/form-data; boundary={BOUNDARY}"},
+            body=body,
+        )
+        assert status == 400, status
+        assert not list((srv.root / "Inbox").glob("partial*.mp3"))
+    finally:
+        srv.close()
+
+
+def test_invalid_later_upload_rolls_back_earlier_file():
+    srv = _Server()
+    try:
+        body = _multipart(
+            [
+                ("files", "ok.mp3", "audio/mpeg", b"audio"),
+                ("files", "bad.exe", "application/octet-stream", b"MZ..."),
+            ]
+        )
+        status, _ = srv.request(
+            "POST",
+            "/api/uploads",
+            headers={"Content-Type": f"multipart/form-data; boundary={BOUNDARY}"},
+            body=body,
+        )
+        assert status == 400, status
+        assert not list((srv.root / "Inbox").glob("*"))
+    finally:
+        srv.close()
+
+
 # --- path traversal (regression) ----------------------------------------
 
 def test_path_traversal_blocked():
@@ -204,6 +256,25 @@ def test_path_traversal_blocked():
             status, _ = srv.request("GET", path)
             assert status in (403, 404), (path, status)
     finally:
+        srv.close()
+
+
+def test_output_range_response_streams_valid_bytes():
+    srv = _Server()
+    original = web.RESPONSE_STREAM_CHUNK_BYTES
+    web.RESPONSE_STREAM_CHUNK_BYTES = 3
+    try:
+        payload = b"0123456789abcdef"
+        target = srv.root / "outputs" / "range.bin"
+        target.write_bytes(payload)
+        status, data = srv.request("GET", "/outputs/range.bin", headers={"Range": "bytes=0-"})
+        assert status == 206, status
+        assert data == payload
+        status, data = srv.request("GET", "/outputs/range.bin", headers={"Range": "bytes=2-5"})
+        assert status == 206, status
+        assert data == b"2345"
+    finally:
+        web.RESPONSE_STREAM_CHUNK_BYTES = original
         srv.close()
 
 

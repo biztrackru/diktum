@@ -58,6 +58,45 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - SEC-P0-001 Security Hardening Review Fixes
+
+Status: DELIVERED (2026-06-28). Review fixes on top of Claude's hardening branch.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- `tests/test_web_security.py`
+- `docs/security-hardening-review.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User asked to review Claude's `security/hardening-2026-06-28` branch and either finish needed hardening or identify maintainer actions.
+
+Findings fixed:
+
+- Failed/malformed multipart uploads could leave a partial file in `Inbox`; upload handling now rolls back opened targets on multipart, validation and I/O failures.
+- `/outputs/` range responses still read the whole requested range into memory; full and range responses now use bounded streaming chunks.
+- JSON endpoints allowed missing `Content-Type`; JSON request bodies now consistently require `application/json`.
+
+Built artifact:
+
+- `.dist/Voice Recognizer Trial 20260628-210214.zip`
+
+Checks:
+
+- `python3 tests/test_web_security.py` outside sandbox: 16/16 passed;
+- `python3 tests/test_multipart.py`: 6/6 passed;
+- `python3 -m compileall app/src`;
+- `bash -n app/scripts/setup_gigastt.sh`;
+- `/bin/zsh -n` for `app/scripts/setup_local_mac.sh`, `doctor_local_mac.sh`, `start_server.sh`, `stop_server.sh`;
+- `/bin/zsh -n` for root `Настроить/Проверить/Запустить/Остановить/Разблокировать Voice Recognizer.command`;
+- `git diff --check`;
+- secret scan found no real HF/OpenAI tokens;
+- `PATH='' app/scripts/build_install_pack.sh`;
+- archive scan confirmed no real `.env`, `.venv`, `.models`, `.cache`, `.dist`, `logs/`, `tools/bin`, audio files, generated outputs, `.docx`, `__pycache__`, `.pyc` or `__MACOSX`.
+
 ### Codex - UX-P0-008 Launch UI Cleanup
 
 Status: DELIVERED (2026-06-28). First-screen launch UI noise removed.

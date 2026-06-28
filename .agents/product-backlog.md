@@ -63,6 +63,29 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 
 ## Ready Queue
 
+### SEC-P0-001 Security Hardening Review Fixes
+
+Status: DELIVERED (2026-06-28).
+
+Parent backlog: `P0-001 Mac Install Acceptance`, `P0-007 Local Smoke Suite`.
+
+Goal: проверить hardening-ветку Клода и закрыть найденные review-регрессии до merge.
+
+Scope:
+
+- `app/src/voice_recognizer/web.py`
+- `app/src/voice_recognizer/multipart.py`
+- `tests/`
+- `docs/security-hardening-review.md`
+- `.agents/task-board.md`
+
+Acceptance:
+
+- Multipart upload не оставляет частичные файлы после malformed/oversized request.
+- `/outputs/` full and range responses stream file bytes without reading a whole large range into memory.
+- JSON endpoints reject non-JSON request bodies consistently.
+- Security tests pass.
+
 ### UX-P0-008 Launch UI Cleanup
 
 Status: DELIVERED (2026-06-28).

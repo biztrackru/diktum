@@ -16,12 +16,12 @@ This branch makes the project safe to publish. It is meant to be reviewed
 |---|---|---|
 | **H-1** DNS-rebinding / CSRF | `Host` allowlist + `Origin`/`Sec-Fetch-Site` checks on POST/DELETE | `app/src/voice_recognizer/web.py` (`_guard`, `_host_allowed`, `_origin_allowed`) |
 | **M-1** CSRF via non-JSON | JSON endpoints now require `Content-Type: application/json` | `web.py` (`_read_json_body`) |
-| **M-2** DoS / disk fill | Caps on request body (`MAX_JSON_BODY_BYTES`) and uploads (`MAX_UPLOAD_BYTES`), env-overridable | `web.py` |
+| **M-2** DoS / disk fill | Caps on request body (`MAX_JSON_BODY_BYTES`) and uploads (`MAX_UPLOAD_BYTES`), env-overridable; malformed/failed uploads roll back partial files | `web.py` |
 | **M-3** `cgi` removed in 3.13 | New dependency-free streaming multipart parser; Python ceiling raised to `<3.14` | `web.py`, `app/src/voice_recognizer/multipart.py`, `app/pyproject.toml` |
 | **M-4** unpinned deps | Upper bounds added; `gigaam` git dep flagged to be commit-pinned | `app/pyproject.toml` |
 | **M-5** model integrity | SHA-256 verification framework for GigaAM v3 model files | `app/scripts/setup_gigastt.sh` |
 | **L-2** stdout leak | Subprocess output kept in server log, not returned to client | `web.py` (`_apply_result_speaker_names`) |
-| **L-3** memory spike | `/outputs/` responses streamed instead of `read_bytes()` | `web.py` (`_serve_output`) |
+| **L-3** memory spike | `/outputs/` full and range responses streamed instead of whole-file reads | `web.py` (`_serve_output`) |
 | **L-4** dead LM Studio config | Removed from `.env.example` | `app/.env.example` |
 | **L-5** LAN exposure | Warning printed when bound to a non-local host | `web.py` (`run_web_server`) |
 | **L-1** broken git ref | `refs/heads/_t/x` removed; repo `fsck`-clean | repository |
@@ -40,13 +40,13 @@ Design notes:
 
 ```bash
 # from the repo root, no third-party deps required (stdlib only):
-python3 tests/test_web_security.py     # 12 tests: guards, limits, traversal, upload
+python3 tests/test_web_security.py     # 16 tests: guards, limits, traversal, upload cleanup, range streaming
 python3 tests/test_multipart.py        # 6 tests: parser correctness + size cap
 # or, if pytest is available:
 python3 -m pytest tests/ -q
 ```
 
-Expected: `12/12 passed` and `6/6 passed`.
+Expected: `16/16 passed` and `6/6 passed`.
 
 ## 3. Manual verification (server running on 127.0.0.1:8765)
 
@@ -114,9 +114,7 @@ These need a human decision or a real macOS run with the models:
 
 - `python3 -m compileall app/src` — OK
 - `bash -n app/scripts/setup_gigastt.sh` — OK
-- `tests/` — 18/18 passing
+- `tests/` — 22/22 passing
 - `git fsck` — clean (broken ref removed)
 - Confirmed no secrets/audio/`.pyc` staged in the commit.
-- `zsh -n` on the zsh launchers was **not** run here (no zsh in the build
-  sandbox); run it on macOS as a final check:
-  `zsh -n app/scripts/start_server.sh app/scripts/stop_server.sh`
+- `zsh -n` on app scripts and root `.command` launchers — OK on macOS.
