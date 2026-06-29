@@ -58,6 +58,46 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-005 Handy GigaAM e2e Runtime Spike
+
+Status: DELIVERED (2026-06-29). Clean ONNX runtime POC and benchmark result.
+
+Scope:
+
+- `docs/handy-gigaam-e2e-runtime.md`
+- `docs/local-models.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+- ignored `.local-quality/candidates/`
+- ignored `.local-quality/reports/`
+
+Trigger:
+
+- User asked whether we can dissect Handy's GigaAM v3 quality path and continue toward a serious portable quality improvement without LM Studio.
+
+What changed:
+
+- Inspected Handy `giga-am-v3-int8/model.int8.onnx` with `onnxruntime`: input `features` `[batch_size, 64, seq_len]`, `feature_lengths`; output `log_probs` `[batch_size, seq_len, 257]`.
+- Confirmed Handy vocab format and CTC blank id from local `vocab.txt`.
+- Matched preprocessing against upstream GigaAM: mono 16 kHz, 64-bin log MelSpectrogram with 400-sample window and 160-sample hop.
+- Ran a clean Python/ONNX Runtime POC on `Носников` without calling Handy app/runtime code or reading Handy history/recordings.
+- Produced ignored private candidates for first 120 seconds using fixed 20s chunks and pyannote speech-turn chunks.
+- Benchmarked candidates against the existing private `.local-quality` reference.
+- Added `docs/handy-gigaam-e2e-runtime.md` with results and next implementation path.
+
+Checks:
+
+- Handy e2e CTC fixed-chunk candidate: token F1 `0.593` on private `Носников` first reference window.
+- Handy e2e CTC pyannote-turn candidate: token F1 `0.603`.
+- Current edited GigaSTT remains winner in that benchmark: token F1 `0.638`.
+- Handy Whisper/whisper.cpp candidate remains lower: token F1 `0.511`.
+
+Notes:
+
+- This proves the model can run through a clean runtime and is the most promising next ASR-quality candidate.
+- It is not ready as the default engine because it lacks word-level timestamps and needs VAD/chunk stitching plus segment-level ASR support in the pipeline.
+- No Handy private app code, history, recordings, model files or private transcript artifacts were staged.
+
 ### Codex - P0-005 Handy Pipeline Inspection
 
 Status: DELIVERED (2026-06-29). Handy/GigaAM dictation path inspected.
