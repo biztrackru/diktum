@@ -175,6 +175,7 @@ Acceptance:
 - Delivered first slice: UI result file links include sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when they exist.
 - Delivered first UI slice: Text preview and primary Markdown link prefer edited exports; raw/clean files remain available in the Files tab.
 - Delivered benchmark slice: `benchmark-quality` can compare selected problematic snippets against private reference text under ignored `.local-quality/` without committing transcripts, audio or outputs.
+- Delivered candidate benchmark slice: `benchmark-quality --candidate name=path` can score local `.txt`, `.md` and `.docx` outputs from Speech2Text/FluidAudio/FunASR/WhisperX before any ensemble merge is attempted.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 
 ### P0-008 Installable Layout And Update-Safe Data Split

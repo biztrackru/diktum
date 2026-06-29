@@ -83,3 +83,27 @@ Source: https://github.com/QuentinFuxa/WhisperLiveKit
 5. Какие license/NOTICE условия Apache-2.0 надо выполнить, если мы берем код, а не только идеи?
 
 Итог: не заменяем наш продукт WhisperLiveKit'ом, но до implementation setup/engine registry делаем короткое сравнение и берем только узкие инфраструктурные идеи.
+
+## Speech2Text.ru
+
+Source: https://speech2text.ru/
+
+Статус: внешний quality reference, публичного open-source не найдено.
+
+Что видно публично:
+
+- сервис делает распознавание, разделение говорящих и пунктуацию;
+- есть API/integration page;
+- на сайте указаны `Linux`, `PHP`, `Python`, `MySQL`, `yt-dlp`, `whisper`, `ffmpeg`;
+- продукт включен в реестр российского ПО;
+- подробное описание pipeline, моделей или репозиторий с наработками не найдены.
+
+Вывод:
+
+- Не используем как зависимость или source-код.
+- Используем как внешний эталон качества: экспорт/копия результата кладется в ignored `.local-quality/references/` или `.local-quality/candidates/`.
+- Через `benchmark-quality --candidate speech2text=...` можно сравнивать их вывод с нашим raw/edited и будущими локальными движками на тех же reference snippets.
+
+Гипотеза:
+
+- Хороший результат вероятно дает не один Whisper, а комбинация ASR, diarization, пунктуации и постобработки. Поэтому для нас правильный путь - не искать один “магический” движок, а строить измеряемый multi-candidate pipeline.

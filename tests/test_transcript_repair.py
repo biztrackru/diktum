@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app" / "src"))
@@ -17,6 +18,7 @@ from voice_recognizer.gigastt import GigasttSegment  # noqa: E402
 from voice_recognizer.transcript_repair import (  # noqa: E402
     build_quality_benchmark_report,
     detect_suspicious_spans,
+    load_quality_candidates,
     load_quality_references,
     normalize_text,
     render_edited_segments,
@@ -127,6 +129,75 @@ def test_quality_benchmark_report_uses_local_reference_windows() -> None:
         assert entry["winner"] == "edited"
         assert "лишний текст" not in entry["texts"]["raw"]
         assert entry["edited"]["missing_terms"] == []
+
+
+def test_quality_benchmark_report_scores_external_candidates() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        reference_path = root / "references.json"
+        candidate_path = root / "speech2text.txt"
+        reference_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "candidate-000",
+                        "source": "candidate.m4a",
+                        "start": "00:00:08",
+                        "end": "00:00:15",
+                        "reference": "Компания НФЛО демонстрирует сильные стандарты сервиса.",
+                        "terms": ["НФЛО"],
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        candidate_path.write_text(
+            "Спикер 2 00:00:08 Компания НФЛО демонстрирует сильные стандарты сервиса.\n"
+            "Спикер 2 00:00:20 Лишняя фраза вне окна.\n",
+            encoding="utf-8",
+        )
+        references = load_quality_references(reference_path)
+        candidates = load_quality_candidates([f"speech2text={candidate_path}"])
+
+        report = build_quality_benchmark_report(
+            manifest_path=root / "candidate.manifest.json",
+            source_name="candidate.m4a",
+            references=references,
+            raw_segments=[GigasttSegment(8.0, 15.0, 0, "компания Пу демонстрирует сильные стандарты сервиса")],
+            edited_segments=[GigasttSegment(8.0, 15.0, 0, "Компания Пу демонстрирует сильные стандарты сервиса.")],
+            candidates=candidates,
+        )
+
+        summary = report["summary"]
+        entry = report["entries"][0]
+        assert entry["winner"] == "candidate:speech2text"
+        assert summary["candidate_better_count"] == 1
+        assert summary["candidate_summaries"]["speech2text"]["avg_token_f1"] == 1.0
+        assert "Лишняя фраза" not in entry["texts"]["candidates"]["speech2text"]
+        assert entry["candidates"]["speech2text"]["score"]["missing_terms"] == []
+
+
+def test_quality_candidate_loader_reads_docx_exports() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        docx_path = root / "candidate.docx"
+        document_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Спикер 1 00:00:08 Компания НФЛО демонстрирует сильные стандарты сервиса.</w:t></w:r></w:p>
+  </w:body>
+</w:document>
+"""
+        with zipfile.ZipFile(docx_path, "w") as archive:
+            archive.writestr("word/document.xml", document_xml)
+
+        candidates = load_quality_candidates([f"docx={docx_path}"])
+
+        assert candidates[0].name == "docx"
+        assert candidates[0].timed is True
+        assert candidates[0].segments[0].start == 8.0
+        assert candidates[0].segments[0].text == "Компания НФЛО демонстрирует сильные стандарты сервиса."
 
 
 def test_rewrite_manifest_exports_updates_edited_speaker_names_without_rerun() -> None:

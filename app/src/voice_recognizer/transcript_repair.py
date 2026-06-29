@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import re
 import time
+import zipfile
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 from voice_recognizer.formatting import format_timestamp
 from voice_recognizer.gigastt import GigasttSegment, speaker_label
@@ -20,6 +22,16 @@ _PUNCTUATION_RE = re.compile(r"[.!?,:;]")
 _ALL_CAPS_RE = re.compile(r"\b[A-ZА-ЯЁ]{2,}\b")
 _SPACE_RE = re.compile(r"\s+")
 _LOOSE_SOURCE_RE = re.compile(r"[^0-9A-Za-zА-Яа-яЁё]+")
+_TIMESTAMP_RE = re.compile(r"(?<!\d)(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)(?!\d)")
+_TIMESTAMP_INTERVAL_RE = re.compile(
+    r"(?<!\d)(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*[-–—]\s*"
+    r"(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)(?!\d)"
+)
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
+_SPEAKER_PREFIX_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:(?:спикер|speaker)\s+\d+\s*[:：-]?|[A-ZА-ЯЁ][0-9A-Za-zА-Яа-яЁё ._-]{0,40}\s*[:：])\s*",
+    flags=re.IGNORECASE,
+)
 _SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([,.!?:;])")
 _NO_SPACE_AFTER_PUNCT_RE = re.compile(r"([,.!?:;])(?=[^\s,.!?:;\d])")
 _REPEATED_SHORT_TOKEN_RE = re.compile(
@@ -121,6 +133,14 @@ class QualityReference:
     path: str
 
 
+@dataclass(frozen=True)
+class QualityCandidate:
+    name: str
+    path: str
+    segments: list[GigasttSegment]
+    timed: bool
+
+
 def detect_suspicious_spans(
     segments: list[GigasttSegment],
     *,
@@ -178,6 +198,28 @@ def filter_quality_references_for_source(
     ]
 
 
+def load_quality_candidates(specs: list[str]) -> list[QualityCandidate]:
+    candidates: list[QualityCandidate] = []
+    used_names: set[str] = set()
+    for spec in specs:
+        name, path = _parse_candidate_spec(spec)
+        if not path.exists():
+            raise ValueError(f"candidate transcript file not found: {path}")
+        text = _read_candidate_text(path)
+        segments, timed = _candidate_segments_from_text(text)
+        candidate_name = _unique_candidate_name(name or path.stem, used_names)
+        used_names.add(candidate_name)
+        candidates.append(
+            QualityCandidate(
+                name=candidate_name,
+                path=str(path),
+                segments=segments,
+                timed=timed,
+            )
+        )
+    return candidates
+
+
 def build_quality_benchmark_report(
     *,
     manifest_path: Path,
@@ -185,8 +227,10 @@ def build_quality_benchmark_report(
     references: list[QualityReference],
     raw_segments: list[GigasttSegment],
     edited_segments: list[GigasttSegment],
+    candidates: list[QualityCandidate] | None = None,
     include_excerpts: bool = True,
 ) -> dict[str, object]:
+    candidates = candidates or []
     matched_references = filter_quality_references_for_source(references, source_name)
     entries: list[dict[str, object]] = []
     for reference in matched_references:
@@ -194,6 +238,19 @@ def build_quality_benchmark_report(
         edited_text = extract_segments_text(edited_segments, start=reference.start, end=reference.end)
         raw_score = score_text_against_reference(raw_text, reference.reference, terms=reference.terms)
         edited_score = score_text_against_reference(edited_text, reference.reference, terms=reference.terms)
+        candidate_payloads: dict[str, object] = {}
+        candidate_texts: dict[str, str] = {}
+        score_map = {"raw": raw_score, "edited": edited_score}
+        for candidate in candidates:
+            candidate_text = extract_segments_text(candidate.segments, start=reference.start, end=reference.end)
+            candidate_score = score_text_against_reference(candidate_text, reference.reference, terms=reference.terms)
+            candidate_payloads[candidate.name] = {
+                "path": candidate.path,
+                "timed": candidate.timed,
+                "score": candidate_score,
+            }
+            candidate_texts[candidate.name] = candidate_text
+            score_map[f"candidate:{candidate.name}"] = candidate_score
         entry: dict[str, object] = {
             "id": reference.id,
             "source": reference.source,
@@ -206,13 +263,15 @@ def build_quality_benchmark_report(
             "reference_path": reference.path,
             "raw": raw_score,
             "edited": edited_score,
-            "winner": _benchmark_winner(raw_score, edited_score),
+            "candidates": candidate_payloads,
+            "winner": _benchmark_winner_from_scores(score_map),
         }
         if include_excerpts:
             entry["texts"] = {
                 "reference": reference.reference,
                 "raw": raw_text,
                 "edited": edited_text,
+                "candidates": candidate_texts,
             }
         entries.append(entry)
     return {
@@ -224,6 +283,14 @@ def build_quality_benchmark_report(
         "summary": summarize_quality_benchmark_entries(entries),
         "references_loaded": len(references),
         "references_matched": len(matched_references),
+        "candidates": [
+            {
+                "name": candidate.name,
+                "path": candidate.path,
+                "timed": candidate.timed,
+            }
+            for candidate in candidates
+        ],
         "entries": entries,
         "notes": [
             "This report may contain private transcript snippets when include_excerpts is enabled.",
@@ -236,6 +303,7 @@ def summarize_quality_benchmark_entries(entries: list[dict[str, object]]) -> dic
     raw_scores = [_score_dict(entry.get("raw")) for entry in entries]
     edited_scores = [_score_dict(entry.get("edited")) for entry in entries]
     winners = [str(entry.get("winner") or "tie") for entry in entries]
+    candidate_scores = _candidate_scores_by_name(entries)
     return {
         "reference_count": len(entries),
         "raw_avg_word_similarity": _avg_score(raw_scores, "word_similarity"),
@@ -250,6 +318,11 @@ def summarize_quality_benchmark_entries(entries: list[dict[str, object]]) -> dic
         "edited_missing_window_count": sum(1 for score in edited_scores if not score.get("candidate_word_count")),
         "edited_better_count": winners.count("edited"),
         "raw_better_count": winners.count("raw"),
+        "candidate_better_count": sum(1 for winner in winners if winner.startswith("candidate:")),
+        "candidate_summaries": {
+            name: _candidate_summary(scores, winners=winners, winner_name=f"candidate:{name}")
+            for name, scores in sorted(candidate_scores.items())
+        },
         "tie_count": winners.count("tie"),
     }
 
@@ -419,6 +492,131 @@ def normalize_text(text: str) -> str:
     if cleaned and not re.search(r"[.!?…:]$", cleaned) and len(_WORD_RE.findall(cleaned)) >= 4:
         cleaned += "."
     return cleaned
+
+
+def _parse_candidate_spec(spec: str) -> tuple[str | None, Path]:
+    value = spec.strip()
+    if not value:
+        raise ValueError("candidate spec is empty")
+    if "=" in value:
+        name, raw_path = value.split("=", 1)
+        name = name.strip()
+        path = Path(raw_path.strip())
+        return name or None, path
+    path = Path(value)
+    return None, path
+
+
+def _read_candidate_text(path: Path) -> str:
+    if path.suffix.lower() == ".docx":
+        return _read_docx_text(path)
+    return path.read_text(encoding="utf-8")
+
+
+def _read_docx_text(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            document_xml = archive.read("word/document.xml")
+    except (KeyError, OSError, zipfile.BadZipFile) as error:
+        raise ValueError(f"could not read DOCX candidate {path}: {error}") from error
+    try:
+        root = ElementTree.fromstring(document_xml)
+    except ElementTree.ParseError as error:
+        raise ValueError(f"could not parse DOCX candidate {path}: {error}") from error
+
+    paragraphs: list[str] = []
+    for paragraph in root.iter("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"):
+        parts: list[str] = []
+        for node in paragraph.iter():
+            tag = node.tag.rsplit("}", 1)[-1]
+            if tag == "t" and node.text:
+                parts.append(node.text)
+            elif tag == "tab":
+                parts.append(" ")
+            elif tag in {"br", "cr"}:
+                parts.append("\n")
+        text = _SPACE_RE.sub(" ", "".join(parts)).strip()
+        if text:
+            paragraphs.append(text)
+    return "\n".join(paragraphs)
+
+
+def _unique_candidate_name(base: str, used_names: set[str]) -> str:
+    cleaned = re.sub(r"[^0-9A-Za-zА-Яа-яЁё_.-]+", "-", base.strip()).strip("-._")
+    name = cleaned or "candidate"
+    if name not in used_names:
+        return name
+    suffix = 2
+    while f"{name}-{suffix}" in used_names:
+        suffix += 1
+    return f"{name}-{suffix}"
+
+
+def _candidate_segments_from_text(text: str) -> tuple[list[GigasttSegment], bool]:
+    timestamped_lines: list[tuple[float, float | None, str]] = []
+    fallback_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = _strip_candidate_line(raw_line)
+        if not line:
+            continue
+        parsed = _parse_timestamped_candidate_line(line)
+        if parsed is None:
+            fallback_lines.append(line)
+            continue
+        timestamped_lines.append(parsed)
+    if timestamped_lines:
+        segments: list[GigasttSegment] = []
+        for index, (start, explicit_end, line_text) in enumerate(timestamped_lines):
+            next_start = timestamped_lines[index + 1][0] if index + 1 < len(timestamped_lines) else None
+            end = explicit_end if explicit_end is not None else next_start
+            if end is None or end <= start:
+                end = start + 30.0
+            segments.append(GigasttSegment(start, end, None, line_text))
+        return segments, True
+
+    body = _strip_candidate_text("\n".join(fallback_lines) if fallback_lines else text)
+    return [GigasttSegment(0.0, 1_000_000_000.0, None, body)] if body else [], False
+
+
+def _strip_candidate_line(line: str) -> str:
+    cleaned = line.strip()
+    cleaned = _MARKDOWN_HEADING_RE.sub("", cleaned)
+    cleaned = cleaned.strip("`*_> \t")
+    return _SPACE_RE.sub(" ", cleaned).strip()
+
+
+def _strip_candidate_text(text: str) -> str:
+    cleaned_lines = []
+    for line in text.splitlines():
+        cleaned = _strip_candidate_line(line)
+        if cleaned:
+            cleaned_lines.append(cleaned)
+    return _SPACE_RE.sub(" ", " ".join(cleaned_lines)).strip()
+
+
+def _parse_timestamped_candidate_line(line: str) -> tuple[float, float | None, str] | None:
+    interval = _TIMESTAMP_INTERVAL_RE.search(line)
+    if interval is not None:
+        start = _seconds_from_reference_value(interval.group(1))
+        end = _seconds_from_reference_value(interval.group(2))
+        text = line[interval.end():].strip(" `:-–—")
+        if not text:
+            text = line[: interval.start()].strip(" `:-–—")
+        return float(start or 0.0), float(end) if end is not None else None, _strip_candidate_transcript_text(text)
+
+    timestamp = _TIMESTAMP_RE.search(line)
+    if timestamp is None:
+        return None
+    start = _seconds_from_reference_value(timestamp.group(1))
+    text = f"{line[:timestamp.start()]} {line[timestamp.end():]}".strip(" `:-–—")
+    return float(start or 0.0), None, _strip_candidate_transcript_text(text)
+
+
+def _strip_candidate_transcript_text(text: str) -> str:
+    cleaned = _SPEAKER_PREFIX_RE.sub("", text).strip()
+    cleaned = re.sub(r"\b\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\b", " ", cleaned)
+    cleaned = cleaned.strip(" `:-–—")
+    return _SPACE_RE.sub(" ", cleaned).strip()
 
 
 def _quality_reference_paths(target: Path) -> list[Path]:
@@ -649,30 +847,70 @@ def _avg_score(scores: list[dict[str, object]], key: str) -> float | None:
     return round(sum(values) / len(values), 3)
 
 
+def _candidate_scores_by_name(entries: list[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+    scores_by_name: dict[str, list[dict[str, object]]] = {}
+    for entry in entries:
+        candidates = entry.get("candidates")
+        if not isinstance(candidates, dict):
+            continue
+        for name, payload in candidates.items():
+            if not isinstance(payload, dict):
+                continue
+            score = _score_dict(payload.get("score"))
+            scores_by_name.setdefault(str(name), []).append(score)
+    return scores_by_name
+
+
+def _candidate_summary(scores: list[dict[str, object]], *, winners: list[str], winner_name: str) -> dict[str, object]:
+    return {
+        "avg_word_similarity": _avg_score(scores, "word_similarity"),
+        "avg_char_similarity": _avg_score(scores, "char_similarity"),
+        "avg_token_f1": _avg_score(scores, "token_f1"),
+        "avg_punctuation_per_100_words": _avg_score(scores, "punctuation_per_100_words"),
+        "missing_window_count": sum(1 for score in scores if not score.get("candidate_word_count")),
+        "better_count": winners.count(winner_name),
+    }
+
+
 def _benchmark_winner(raw_score: dict[str, object], edited_score: dict[str, object]) -> str:
-    raw_similarity = float(raw_score.get("word_similarity") or 0.0)
-    edited_similarity = float(edited_score.get("word_similarity") or 0.0)
-    raw_char = float(raw_score.get("char_similarity") or 0.0)
-    edited_char = float(edited_score.get("char_similarity") or 0.0)
-    raw_f1 = float(raw_score.get("token_f1") or 0.0)
-    edited_f1 = float(edited_score.get("token_f1") or 0.0)
-    raw_punctuation = float(raw_score.get("punctuation_per_100_words") or 0.0)
-    edited_punctuation = float(edited_score.get("punctuation_per_100_words") or 0.0)
-    if edited_similarity > raw_similarity + 0.015:
-        return "edited"
-    if raw_similarity > edited_similarity + 0.015:
-        return "raw"
-    if edited_char > raw_char + 0.015:
-        return "edited"
-    if raw_char > edited_char + 0.015:
-        return "raw"
-    if edited_f1 > raw_f1 + 0.025:
-        return "edited"
-    if raw_f1 > edited_f1 + 0.025:
-        return "raw"
-    if edited_punctuation > raw_punctuation + 2.0:
-        return "edited"
-    return "tie"
+    return _benchmark_winner_from_scores({"raw": raw_score, "edited": edited_score})
+
+
+def _benchmark_winner_from_scores(scores_by_name: dict[str, dict[str, object]]) -> str:
+    if not scores_by_name:
+        return "tie"
+    ranked = sorted(
+        scores_by_name.items(),
+        key=lambda item: _score_rank(item[1]),
+        reverse=True,
+    )
+    if len(ranked) == 1:
+        return ranked[0][0]
+    best_name, best_score = ranked[0]
+    second_score = ranked[1][1]
+    if _scores_tied(best_score, second_score):
+        return "tie"
+    return best_name
+
+
+def _score_rank(score: dict[str, object]) -> tuple[float, float, float, float, float]:
+    return (
+        float(score.get("token_f1") or 0.0),
+        float(score.get("word_similarity") or 0.0),
+        float(score.get("char_similarity") or 0.0),
+        float(score.get("term_coverage") or 0.0),
+        float(score.get("punctuation_per_100_words") or 0.0),
+    )
+
+
+def _scores_tied(best: dict[str, object], second: dict[str, object]) -> bool:
+    best_rank = _score_rank(best)
+    second_rank = _score_rank(second)
+    return (
+        abs(best_rank[0] - second_rank[0]) <= 0.015
+        and abs(best_rank[1] - second_rank[1]) <= 0.015
+        and abs(best_rank[2] - second_rank[2]) <= 0.015
+    )
 
 
 def _span_payload(span: SuspiciousSpan) -> dict[str, Any]:

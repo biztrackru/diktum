@@ -58,6 +58,48 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-010 ASR Candidate Benchmark Harness
+
+Status: DELIVERED (2026-06-29). Multi-ASR candidate scoring groundwork.
+
+Scope:
+
+- `app/src/voice_recognizer/transcript_repair.py`
+- `app/src/voice_recognizer/cli.py`
+- `tests/test_transcript_repair.py`
+- `docs/transcript-quality-repair.md`
+- `docs/local-models.md`
+- `docs/external-projects.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User proposed a two-layer ASR approach and asked to study other tools, including Speech2Text.ru and WhyNote.
+
+What changed:
+
+- `benchmark-quality` now accepts repeated `--candidate name=path` options.
+- Candidate outputs can be `.txt`, `.md` or `.docx`; timestamped lines are parsed into comparable windows.
+- Benchmark reports include candidate metadata, per-reference candidate scores, candidate summaries and `candidate:<name>` winners.
+- Added synthetic tests for timestamped candidate scoring and DOCX candidate loading.
+- Documented Speech2Text as an external quality reference, WhyNote/FluidAudio local model findings, and the recommended candidate-first path before any ASR ensemble merge.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- `PYTHONPATH=app/src .venv/bin/python tests/test_transcript_repair.py` passed 9/9;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality --help`;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality outputs/pipeline/Носников_дапринт_+_нфло.manifest.json --references .local-quality/references --candidate edited-current=outputs/pipeline/Носников_дапринт_+_нфло.edited.txt --output .local-quality/reports/nosnikov-candidate-smoke.json`;
+- `app/scripts/smoke_local.sh` passed;
+- `git diff --check`;
+- secret scan found no real HF/OpenAI tokens.
+
+Notes:
+
+- This does not run FluidAudio/FunASR yet. It creates the local measurement slot for their outputs.
+- Full untimestamped transcripts can be scored, but timestamped exports or short snippets are fairer for short reference windows.
+
 ### Codex - P0-010 Transcript Quality Benchmark Loop
 
 Status: DELIVERED (2026-06-29). Local-only reference benchmark slice.

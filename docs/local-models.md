@@ -9,6 +9,7 @@
 | `gigastt-gigaam-v3` | работает | Текущий основной ASR: GigaSTT с GigaAM v3 RNNT из `.models/gigastt`. |
 | `handy-gigaam-v3` | кандидат | Handy-модель найдена, но это single-file ONNX, не совместимый напрямую с GigaSTT split RNNT files. |
 | `handy-whisper-large-v3` | кандидат | Handy Whisper Large v3 найден в формате `ggml`; нужен backend через `whisper.cpp`. |
+| `fluidaudio-parakeet-v3` | кандидат | WhyNote использует FluidAudio Parakeet TDT 0.6B v3 CoreML; модель найдена локально, нужен чистый runtime через FluidAudio/SwiftPM или экспорт кандидата. |
 | LM Studio LLM | постобработка | Не ASR, но может чистить, структурировать и суммаризировать готовый текст. |
 
 ## Найдено
@@ -66,6 +67,40 @@ Directory: `~/Library/Application Support/Wispr Flow`
 App: `/Applications/Whisper Transcription.app`
 
 Внутри app bundle явных `.bin`/`.onnx`/`.gguf` моделей быстрый поиск не нашел.
+
+### WhyNote / FluidAudio
+
+App: `/Applications/Whynote.app`
+
+Version observed: `2.0.18`, bundle id `io.42apps.ainotetaker`.
+
+В app bundle найдены профили:
+
+- `local-fluid-audio-parakeet-v3` — local/shared, supported languages include `ru`;
+- `cloud-nexara` — cloud/shared.
+
+Локально скачанные модели:
+
+- `~/Library/Application Support/Whynote/FluidAudio/parakeet-tdt-0.6b-v3-coreml` — около 461 MB, CoreML Parakeet ASR:
+  - `Preprocessor.mlmodelc`;
+  - `Encoder.mlmodelc`;
+  - `Decoder.mlmodelc`;
+  - `JointDecision.mlmodelc`;
+  - `parakeet_v3_vocab.json`.
+- `~/Library/Application Support/Whynote/FluidAudio/speaker-diarization-coreml`:
+  - `pyannote_segmentation.mlmodelc`;
+  - `wespeaker_v2.mlmodelc`;
+  - `plda-parameters.json`.
+- `~/Library/Application Support/Whynote/FluidAudio/silero-vad-coreml`.
+
+Бинарные строки WhyNote указывают на `FluidAudio`, `HuggingFaceModelDownloader`, `FluidInference/parakeet-tdt-0.6b-v3-coreml`, `FluidInference/speaker-diarization-coreml`, `FluidInference/qwen3-asr-0.6b-coreml`, `FluidInference/silero-vad-coreml`.
+
+Вывод:
+
+- Нельзя безопасно встраивать или вызывать приватный код WhyNote как runtime.
+- Модели можно рассматривать как read-only локальные артефакты для экспериментов, но переносимый продукт должен скачивать/использовать открытый runtime сам.
+- Чистый путь интеграции: FluidAudio Swift package или отдельный CLI-wrapper, если он стабильно собирается на macOS.
+- До полноценной интеграции можно экспортировать результат WhyNote/FluidAudio в `.local-quality/candidates/` и сравнивать через `benchmark-quality --candidate`.
 
 ## Правило переиспользования
 

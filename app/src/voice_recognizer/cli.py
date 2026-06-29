@@ -41,6 +41,7 @@ from voice_recognizer.gigastt import (
 from voice_recognizer.transcript_repair import (
     build_quality_benchmark_report,
     build_repair_report,
+    load_quality_candidates,
     load_quality_references,
     render_edited_segments,
     summarize_quality_benchmark_entries,
@@ -822,6 +823,7 @@ def _build_manifest_quality_benchmark_report(
     manifest_path: Path,
     references_path: Path,
     *,
+    candidates: list[object] | None = None,
     include_excerpts: bool,
     max_gap_seconds: float = 1.8,
     smooth_speakers: bool = True,
@@ -858,6 +860,7 @@ def _build_manifest_quality_benchmark_report(
         references=references,
         raw_segments=raw_segments,
         edited_segments=edited_segments,
+        candidates=candidates or [],
         include_excerpts=include_excerpts,
     )
 
@@ -868,6 +871,7 @@ def _combined_quality_benchmark_report(
     references_path: Path,
     reports: list[dict[str, object]],
     include_excerpts: bool,
+    candidate_specs: list[str],
 ) -> dict[str, object]:
     entries: list[dict[str, object]] = []
     for report in reports:
@@ -881,6 +885,7 @@ def _combined_quality_benchmark_report(
         "target": str(target),
         "references": str(references_path),
         "include_excerpts": include_excerpts,
+        "candidate_specs": candidate_specs,
         "summary": summarize_quality_benchmark_entries(entries),
         "manifest_count": len(reports),
         "manifests": reports,
@@ -1595,6 +1600,12 @@ def benchmark_quality(
         "-o",
         help="Output JSON report path or directory. Default is ignored by git.",
     ),
+    candidate_specs: list[str] | None = typer.Option(
+        None,
+        "--candidate",
+        "-c",
+        help="Alternative transcript candidate, either path or name=path. Can be passed multiple times.",
+    ),
     recursive: bool = typer.Option(False, "--recursive", "-R", help="Find manifests recursively when target is a directory."),
     include_excerpts: bool = typer.Option(
         True,
@@ -1615,6 +1626,11 @@ def benchmark_quality(
             "with fields: id, source, start, end, reference, terms.[/cyan]"
         )
         return
+    try:
+        quality_candidates = load_quality_candidates(candidate_specs or [])
+    except ValueError as error:
+        console.print(f"[red]Invalid candidate transcript:[/red] {error}")
+        return
 
     manifests = _iter_manifest_paths(target, recursive=recursive)
     if not manifests:
@@ -1626,6 +1642,7 @@ def benchmark_quality(
     table.add_column("Refs")
     table.add_column("Raw token F1")
     table.add_column("Edited token F1")
+    table.add_column("Best candidate")
     table.add_column("Winner")
     reports: list[dict[str, object]] = []
     failed = 0
@@ -1634,6 +1651,7 @@ def benchmark_quality(
             report = _build_manifest_quality_benchmark_report(
                 manifest_path,
                 references,
+                candidates=quality_candidates,
                 include_excerpts=include_excerpts,
                 max_gap_seconds=max_gap_seconds,
                 smooth_speakers=smooth_speakers,
@@ -1650,8 +1668,9 @@ def benchmark_quality(
         refs = str(summary.get("reference_count", 0))
         raw_similarity = _score_label(summary.get("raw_avg_token_f1"))
         edited_similarity = _score_label(summary.get("edited_avg_token_f1"))
+        best_candidate = _best_candidate_label(summary)
         winner = _summary_winner(summary)
-        table.add_row(str(manifest_path), refs, raw_similarity, edited_similarity, winner)
+        table.add_row(str(manifest_path), refs, raw_similarity, edited_similarity, best_candidate, winner)
 
     output_path = _benchmark_output_path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1662,6 +1681,7 @@ def benchmark_quality(
                 references_path=references,
                 reports=reports,
                 include_excerpts=include_excerpts,
+                candidate_specs=candidate_specs or [],
             ),
             ensure_ascii=False,
             indent=2,
@@ -1678,6 +1698,11 @@ def _score_label(value: object) -> str:
 
 
 def _summary_winner(summary: dict[str, object]) -> str:
+    candidate_summaries = summary.get("candidate_summaries")
+    if isinstance(candidate_summaries, dict):
+        for name, candidate_summary in candidate_summaries.items():
+            if isinstance(candidate_summary, dict) and int(candidate_summary.get("better_count") or 0) > 0:
+                return f"candidate:{name}"
     edited = int(summary.get("edited_better_count") or 0)
     raw = int(summary.get("raw_better_count") or 0)
     if edited > raw:
@@ -1685,6 +1710,26 @@ def _summary_winner(summary: dict[str, object]) -> str:
     if raw > edited:
         return "raw"
     return "tie"
+
+
+def _best_candidate_label(summary: dict[str, object]) -> str:
+    candidate_summaries = summary.get("candidate_summaries")
+    if not isinstance(candidate_summaries, dict) or not candidate_summaries:
+        return "-"
+    best_name = ""
+    best_f1 = -1.0
+    for name, candidate_summary in candidate_summaries.items():
+        if not isinstance(candidate_summary, dict):
+            continue
+        value = candidate_summary.get("avg_token_f1")
+        if not isinstance(value, int | float):
+            continue
+        if float(value) > best_f1:
+            best_name = str(name)
+            best_f1 = float(value)
+    if not best_name:
+        return "-"
+    return f"{best_name} {best_f1:.3f}"
 
 
 @app.command("relabel-speakers")
