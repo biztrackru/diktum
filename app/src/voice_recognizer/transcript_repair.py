@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -12,11 +13,13 @@ from voice_recognizer.gigastt import GigasttSegment, speaker_label
 
 
 REPAIR_REPORT_VERSION = 1
+QUALITY_BENCHMARK_VERSION = 1
 
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]+")
 _PUNCTUATION_RE = re.compile(r"[.!?,:;]")
 _ALL_CAPS_RE = re.compile(r"\b[A-ZА-ЯЁ]{2,}\b")
 _SPACE_RE = re.compile(r"\s+")
+_LOOSE_SOURCE_RE = re.compile(r"[^0-9A-Za-zА-Яа-яЁё]+")
 _SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([,.!?:;])")
 _NO_SPACE_AFTER_PUNCT_RE = re.compile(r"([,.!?:;])(?=[^\s,.!?:;\d])")
 _REPEATED_SHORT_TOKEN_RE = re.compile(
@@ -106,6 +109,18 @@ class SuspiciousSpan:
         return format_timestamp(self.end)
 
 
+@dataclass(frozen=True)
+class QualityReference:
+    id: str
+    source: str | None
+    start: float | None
+    end: float | None
+    reference: str
+    terms: list[str]
+    notes: str | None
+    path: str
+
+
 def detect_suspicious_spans(
     segments: list[GigasttSegment],
     *,
@@ -139,6 +154,157 @@ def detect_suspicious_spans(
             )
         )
     return suspicious[:max_spans]
+
+
+def load_quality_references(target: Path) -> list[QualityReference]:
+    paths = _quality_reference_paths(target)
+    references: list[QualityReference] = []
+    for path in paths:
+        if path.suffix.lower() == ".jsonl":
+            references.extend(_load_quality_references_jsonl(path))
+        else:
+            references.extend(_load_quality_references_json(path))
+    return references
+
+
+def filter_quality_references_for_source(
+    references: list[QualityReference],
+    source_name: str,
+) -> list[QualityReference]:
+    return [
+        reference
+        for reference in references
+        if reference.source is None or _source_matches(source_name, reference.source)
+    ]
+
+
+def build_quality_benchmark_report(
+    *,
+    manifest_path: Path,
+    source_name: str,
+    references: list[QualityReference],
+    raw_segments: list[GigasttSegment],
+    edited_segments: list[GigasttSegment],
+    include_excerpts: bool = True,
+) -> dict[str, object]:
+    matched_references = filter_quality_references_for_source(references, source_name)
+    entries: list[dict[str, object]] = []
+    for reference in matched_references:
+        raw_text = extract_segments_text(raw_segments, start=reference.start, end=reference.end)
+        edited_text = extract_segments_text(edited_segments, start=reference.start, end=reference.end)
+        raw_score = score_text_against_reference(raw_text, reference.reference, terms=reference.terms)
+        edited_score = score_text_against_reference(edited_text, reference.reference, terms=reference.terms)
+        entry: dict[str, object] = {
+            "id": reference.id,
+            "source": reference.source,
+            "start": reference.start,
+            "end": reference.end,
+            "start_label": format_timestamp(reference.start) if reference.start is not None else None,
+            "end_label": format_timestamp(reference.end) if reference.end is not None else None,
+            "terms": reference.terms,
+            "notes": reference.notes,
+            "reference_path": reference.path,
+            "raw": raw_score,
+            "edited": edited_score,
+            "winner": _benchmark_winner(raw_score, edited_score),
+        }
+        if include_excerpts:
+            entry["texts"] = {
+                "reference": reference.reference,
+                "raw": raw_text,
+                "edited": edited_text,
+            }
+        entries.append(entry)
+    return {
+        "quality_benchmark_version": QUALITY_BENCHMARK_VERSION,
+        "created_at": time.time(),
+        "mode": "local-reference",
+        "manifest": str(manifest_path),
+        "source_name": source_name,
+        "summary": summarize_quality_benchmark_entries(entries),
+        "references_loaded": len(references),
+        "references_matched": len(matched_references),
+        "entries": entries,
+        "notes": [
+            "This report may contain private transcript snippets when include_excerpts is enabled.",
+            "Keep reports under ignored .local-quality/ unless you intentionally sanitize them.",
+        ],
+    }
+
+
+def summarize_quality_benchmark_entries(entries: list[dict[str, object]]) -> dict[str, object]:
+    raw_scores = [_score_dict(entry.get("raw")) for entry in entries]
+    edited_scores = [_score_dict(entry.get("edited")) for entry in entries]
+    winners = [str(entry.get("winner") or "tie") for entry in entries]
+    return {
+        "reference_count": len(entries),
+        "raw_avg_word_similarity": _avg_score(raw_scores, "word_similarity"),
+        "edited_avg_word_similarity": _avg_score(edited_scores, "word_similarity"),
+        "raw_avg_char_similarity": _avg_score(raw_scores, "char_similarity"),
+        "edited_avg_char_similarity": _avg_score(edited_scores, "char_similarity"),
+        "raw_avg_token_f1": _avg_score(raw_scores, "token_f1"),
+        "edited_avg_token_f1": _avg_score(edited_scores, "token_f1"),
+        "raw_avg_punctuation_per_100_words": _avg_score(raw_scores, "punctuation_per_100_words"),
+        "edited_avg_punctuation_per_100_words": _avg_score(edited_scores, "punctuation_per_100_words"),
+        "raw_missing_window_count": sum(1 for score in raw_scores if not score.get("candidate_word_count")),
+        "edited_missing_window_count": sum(1 for score in edited_scores if not score.get("candidate_word_count")),
+        "edited_better_count": winners.count("edited"),
+        "raw_better_count": winners.count("raw"),
+        "tie_count": winners.count("tie"),
+    }
+
+
+def score_text_against_reference(
+    candidate: str,
+    reference: str,
+    *,
+    terms: list[str] | None = None,
+) -> dict[str, object]:
+    reference_tokens = _normalized_words(reference)
+    candidate_tokens = _normalized_words(candidate)
+    word_distance = _levenshtein(reference_tokens, candidate_tokens)
+    word_error_rate = word_distance / max(1, len(reference_tokens))
+
+    reference_chars = list(_normalized_text_for_distance(reference))
+    candidate_chars = list(_normalized_text_for_distance(candidate))
+    char_distance = _levenshtein(reference_chars, candidate_chars)
+    char_error_rate = char_distance / max(1, len(reference_chars))
+
+    token_overlap = _token_overlap(candidate_tokens, reference_tokens)
+    term_list = terms or []
+    found_terms = _found_terms(candidate, term_list)
+    readability = _readability_metrics(candidate)
+    return {
+        "reference_word_count": len(reference_tokens),
+        "candidate_word_count": len(candidate_tokens),
+        "word_error_rate": round(word_error_rate, 3),
+        "word_similarity": round(max(0.0, 1.0 - word_error_rate), 3),
+        "char_error_rate": round(char_error_rate, 3),
+        "char_similarity": round(max(0.0, 1.0 - char_error_rate), 3),
+        "length_ratio": round(len(candidate_tokens) / max(1, len(reference_tokens)), 3),
+        **token_overlap,
+        "term_coverage": round(len(found_terms) / max(1, len(term_list)), 3) if term_list else None,
+        "found_terms": found_terms,
+        "missing_terms": [term for term in term_list if term not in found_terms],
+        **readability,
+    }
+
+
+def extract_segments_text(
+    segments: list[GigasttSegment],
+    *,
+    start: float | None,
+    end: float | None,
+) -> str:
+    if start is None and end is None:
+        selected = segments
+    else:
+        selected = [
+            segment
+            for segment in segments
+            if _segment_overlaps(segment, start=start, end=end)
+        ]
+    return _SPACE_RE.sub(" ", " ".join(segment.text for segment in selected)).strip()
 
 
 def build_repair_report(
@@ -253,6 +419,260 @@ def normalize_text(text: str) -> str:
     if cleaned and not re.search(r"[.!?…:]$", cleaned) and len(_WORD_RE.findall(cleaned)) >= 4:
         cleaned += "."
     return cleaned
+
+
+def _quality_reference_paths(target: Path) -> list[Path]:
+    if not target.exists():
+        raise ValueError(f"quality reference path not found: {target}")
+    if target.is_file():
+        return [target]
+    paths = sorted(
+        path
+        for path in target.glob("**/*")
+        if path.is_file() and path.suffix.lower() in {".json", ".jsonl"}
+    )
+    return paths
+
+
+def _load_quality_references_json(path: Path) -> list[QualityReference]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read quality references {path}: {error}") from error
+    if isinstance(payload, dict):
+        records = payload.get("references")
+    else:
+        records = payload
+    if not isinstance(records, list):
+        raise ValueError(f"quality references must be a JSON list or object with references: {path}")
+    return [
+        _quality_reference_from_record(record, path=path, fallback_index=index + 1)
+        for index, record in enumerate(records)
+    ]
+
+
+def _load_quality_references_jsonl(path: Path) -> list[QualityReference]:
+    references: list[QualityReference] = []
+    for line_index, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"could not read quality reference {path}:{line_index}: {error}") from error
+        references.append(_quality_reference_from_record(record, path=path, fallback_index=line_index))
+    return references
+
+
+def _quality_reference_from_record(record: object, *, path: Path, fallback_index: int) -> QualityReference:
+    if not isinstance(record, dict):
+        raise ValueError(f"quality reference entry must be an object: {path}")
+    reference = _first_present(record, "reference", "reference_text", "text")
+    if not isinstance(reference, str) or not reference.strip():
+        raise ValueError(f"quality reference entry is missing reference text: {path}")
+    source = _first_present(record, "source", "source_name", "file", "audio")
+    terms = _terms_list(_first_present(record, "terms", "keywords", "glossary"))
+    reference_id = _first_present(record, "id", "name")
+    notes = _first_present(record, "notes", "comment")
+    return QualityReference(
+        id=str(reference_id).strip() if reference_id is not None and str(reference_id).strip() else f"{path.stem}-{fallback_index}",
+        source=str(source).strip() if source is not None and str(source).strip() else None,
+        start=_seconds_from_reference_value(_first_present(record, "start", "start_seconds", "start_time")),
+        end=_seconds_from_reference_value(_first_present(record, "end", "end_seconds", "end_time")),
+        reference=_SPACE_RE.sub(" ", reference).strip(),
+        terms=terms,
+        notes=str(notes).strip() if notes is not None and str(notes).strip() else None,
+        path=str(path),
+    )
+
+
+def _first_present(record: dict[str, object], *keys: str) -> object | None:
+    for key in keys:
+        if key in record and record[key] is not None:
+            return record[key]
+    return None
+
+
+def _terms_list(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        items = raw.replace(";", ",").split(",")
+    elif isinstance(raw, list):
+        items = [str(item) for item in raw]
+    else:
+        return []
+    return [item.strip() for item in items if item.strip()]
+
+
+def _seconds_from_reference_value(value: object | None) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    parts = text.split(":")
+    if not 2 <= len(parts) <= 3:
+        raise ValueError(f"invalid timestamp value: {value}")
+    numbers = [float(part.replace(",", ".")) for part in parts]
+    if len(numbers) == 2:
+        minutes, seconds = numbers
+        return minutes * 60 + seconds
+    hours, minutes, seconds = numbers
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _source_matches(source_name: str, reference_source: str) -> bool:
+    source_key = _loose_source_key(source_name)
+    reference_key = _loose_source_key(reference_source)
+    if not source_key or not reference_key:
+        return False
+    return (
+        source_key == reference_key
+        or source_key in reference_key
+        or reference_key in source_key
+    )
+
+
+def _loose_source_key(value: str) -> str:
+    name = Path(str(value).replace("\\", "/")).stem
+    return _LOOSE_SOURCE_RE.sub("", name).lower().replace("ё", "е")
+
+
+def _segment_overlaps(segment: GigasttSegment, *, start: float | None, end: float | None) -> bool:
+    if start is not None and segment.end < start:
+        return False
+    if end is not None and segment.start > end:
+        return False
+    return True
+
+
+def _normalized_words(text: str) -> list[str]:
+    return [word.lower().replace("ё", "е") for word in _WORD_RE.findall(text)]
+
+
+def _normalized_text_for_distance(text: str) -> str:
+    return " ".join(_normalized_words(text))
+
+
+def _levenshtein(left: list[str], right: list[str]) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    previous = list(range(len(right) + 1))
+    for left_index, left_value in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_value in enumerate(right, start=1):
+            insert_cost = current[right_index - 1] + 1
+            delete_cost = previous[right_index] + 1
+            replace_cost = previous[right_index - 1] + (0 if left_value == right_value else 1)
+            current.append(min(insert_cost, delete_cost, replace_cost))
+        previous = current
+    return previous[-1]
+
+
+def _readability_metrics(text: str) -> dict[str, object]:
+    words = _WORD_RE.findall(text)
+    word_count = len(words)
+    letters = [char for char in text if char.isalpha()]
+    upper_letters = [char for char in letters if char.isupper()]
+    punctuation_count = sum(text.count(char) for char in ".,?!:;")
+    sentences = [sentence.strip() for sentence in re.split(r"[.!?]+", text) if sentence.strip()]
+    sentence_caps = 0
+    for sentence in sentences:
+        first_alpha = next((char for char in sentence if char.isalpha()), "")
+        if first_alpha and first_alpha.isupper():
+            sentence_caps += 1
+    return {
+        "punctuation_count": punctuation_count,
+        "punctuation_per_100_words": round(punctuation_count / max(1, word_count) * 100, 1),
+        "upper_letter_percent": round(len(upper_letters) / max(1, len(letters)) * 100, 1),
+        "sentence_count": len(sentences),
+        "sentence_capitalized_percent": round(sentence_caps / max(1, len(sentences)) * 100, 1),
+    }
+
+
+def _token_overlap(candidate_tokens: list[str], reference_tokens: list[str]) -> dict[str, object]:
+    if not reference_tokens and not candidate_tokens:
+        return {"token_precision": 1.0, "token_recall": 1.0, "token_f1": 1.0}
+    if not reference_tokens or not candidate_tokens:
+        return {"token_precision": 0.0, "token_recall": 0.0, "token_f1": 0.0}
+    candidate_counts = Counter(candidate_tokens)
+    reference_counts = Counter(reference_tokens)
+    overlap = sum((candidate_counts & reference_counts).values())
+    precision = overlap / max(1, len(candidate_tokens))
+    recall = overlap / max(1, len(reference_tokens))
+    f1 = 2 * precision * recall / max(0.000001, precision + recall)
+    return {
+        "token_precision": round(precision, 3),
+        "token_recall": round(recall, 3),
+        "token_f1": round(f1, 3),
+    }
+
+
+def _found_terms(text: str, terms: list[str]) -> list[str]:
+    text_key = _normalized_text_for_term_search(text)
+    found: list[str] = []
+    for term in terms:
+        term_key = _normalized_text_for_term_search(term)
+        if term_key and term_key in text_key:
+            found.append(term)
+    return found
+
+
+def _normalized_text_for_term_search(text: str) -> str:
+    return " ".join(_normalized_words(text))
+
+
+def _score_dict(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def _avg_score(scores: list[dict[str, object]], key: str) -> float | None:
+    values: list[float] = []
+    for score in scores:
+        value = score.get(key)
+        if isinstance(value, int | float):
+            values.append(float(value))
+    if not values:
+        return None
+    return round(sum(values) / len(values), 3)
+
+
+def _benchmark_winner(raw_score: dict[str, object], edited_score: dict[str, object]) -> str:
+    raw_similarity = float(raw_score.get("word_similarity") or 0.0)
+    edited_similarity = float(edited_score.get("word_similarity") or 0.0)
+    raw_char = float(raw_score.get("char_similarity") or 0.0)
+    edited_char = float(edited_score.get("char_similarity") or 0.0)
+    raw_f1 = float(raw_score.get("token_f1") or 0.0)
+    edited_f1 = float(edited_score.get("token_f1") or 0.0)
+    raw_punctuation = float(raw_score.get("punctuation_per_100_words") or 0.0)
+    edited_punctuation = float(edited_score.get("punctuation_per_100_words") or 0.0)
+    if edited_similarity > raw_similarity + 0.015:
+        return "edited"
+    if raw_similarity > edited_similarity + 0.015:
+        return "raw"
+    if edited_char > raw_char + 0.015:
+        return "edited"
+    if raw_char > edited_char + 0.015:
+        return "raw"
+    if edited_f1 > raw_f1 + 0.025:
+        return "edited"
+    if raw_f1 > edited_f1 + 0.025:
+        return "raw"
+    if edited_punctuation > raw_punctuation + 2.0:
+        return "edited"
+    return "tie"
 
 
 def _span_payload(span: SuspiciousSpan) -> dict[str, Any]:

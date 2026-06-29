@@ -174,7 +174,7 @@ Acceptance:
 - Local LLM/text repair is optional and local-first, for example LM Studio OpenAI-compatible endpoint; no external text/audio call happens by default.
 - Delivered first slice: UI result file links include sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when they exist.
 - Delivered first UI slice: Text preview and primary Markdown link prefer edited exports; raw/clean files remain available in the Files tab.
-- A private local benchmark can compare selected problematic snippets against reference text without committing transcripts, audio or outputs.
+- Delivered benchmark slice: `benchmark-quality` can compare selected problematic snippets against private reference text under ignored `.local-quality/` without committing transcripts, audio or outputs.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 
 ### P0-008 Installable Layout And Update-Safe Data Split

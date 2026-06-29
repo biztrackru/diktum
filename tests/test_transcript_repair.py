@@ -14,7 +14,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app" / "src"))
 
 from voice_recognizer.gigastt import GigasttSegment  # noqa: E402
-from voice_recognizer.transcript_repair import detect_suspicious_spans, normalize_text, render_edited_segments  # noqa: E402
+from voice_recognizer.transcript_repair import (  # noqa: E402
+    build_quality_benchmark_report,
+    detect_suspicious_spans,
+    load_quality_references,
+    normalize_text,
+    render_edited_segments,
+    score_text_against_reference,
+)
 import voice_recognizer.cli as cli  # noqa: E402
 
 
@@ -52,6 +59,74 @@ def test_render_edited_segments_reassigns_short_speaker_island() -> None:
     assert len(edited) == 1
     assert edited[0].speaker == 0
     assert "да которая" in edited[0].text
+
+
+def test_score_text_against_reference_rewards_readable_candidate() -> None:
+    reference = "Что там заполняешь? Email нужен, чтобы прислать отчет."
+    raw = "че там заполняешь емейл нужен чтобы прислать отчет"
+    edited = "Что там заполняешь? Email нужен, чтобы прислать отчет."
+
+    raw_score = score_text_against_reference(raw, reference, terms=["email", "отчет"])
+    edited_score = score_text_against_reference(edited, reference, terms=["email", "отчет"])
+
+    assert edited_score["word_similarity"] > raw_score["word_similarity"]
+    assert edited_score["char_similarity"] > raw_score["char_similarity"]
+    assert edited_score["token_f1"] > raw_score["token_f1"]
+    assert edited_score["punctuation_per_100_words"] > raw_score["punctuation_per_100_words"]
+    assert edited_score["missing_terms"] == []
+
+
+def test_quality_benchmark_report_uses_local_reference_windows() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        reference_dir = root / ".local-quality" / "references"
+        reference_dir.mkdir(parents=True)
+        reference_path = reference_dir / "synthetic.json"
+        reference_path.write_text(
+            json.dumps(
+                {
+                    "references": [
+                        {
+                            "id": "synthetic-000",
+                            "source": "synthetic interview.m4a",
+                            "start": "00:00:08",
+                            "end": "00:00:15",
+                            "reference": "Что там заполняешь? Email нужен, чтобы прислать отчет.",
+                            "terms": ["email", "отчет"],
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        references = load_quality_references(reference_dir)
+        raw_segments = [
+            GigasttSegment(8.0, 11.0, 0, "че там заполняешь"),
+            GigasttSegment(11.1, 15.0, 0, "емейл нужен чтобы прислать отчет"),
+            GigasttSegment(30.0, 35.0, 0, "лишний текст вне окна"),
+        ]
+        edited_segments = [
+            GigasttSegment(8.0, 15.0, 0, "Что там заполняешь? Email нужен, чтобы прислать отчет."),
+        ]
+
+        report = build_quality_benchmark_report(
+            manifest_path=root / "synthetic.manifest.json",
+            source_name="synthetic interview.m4a",
+            references=references,
+            raw_segments=raw_segments,
+            edited_segments=edited_segments,
+        )
+
+        summary = report["summary"]
+        entry = report["entries"][0]
+        assert summary["reference_count"] == 1
+        assert summary["edited_better_count"] == 1
+        assert summary["edited_avg_token_f1"] > summary["raw_avg_token_f1"]
+        assert entry["winner"] == "edited"
+        assert "лишний текст" not in entry["texts"]["raw"]
+        assert entry["edited"]["missing_terms"] == []
 
 
 def test_rewrite_manifest_exports_updates_edited_speaker_names_without_rerun() -> None:

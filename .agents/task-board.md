@@ -58,6 +58,46 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-010 Transcript Quality Benchmark Loop
+
+Status: DELIVERED (2026-06-29). Local-only reference benchmark slice.
+
+Scope:
+
+- `app/src/voice_recognizer/transcript_repair.py`
+- `app/src/voice_recognizer/cli.py`
+- `tests/test_transcript_repair.py`
+- `docs/transcript-quality-repair.md`
+- `docs/quality-benchmark-references.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User asked to continue serious product work on transcript quality and noted that a reference transcript from an external service exists for `Носников`.
+
+What changed:
+
+- Added local quality reference loading from ignored `.local-quality/references/*.json` and `*.jsonl`.
+- Added raw-vs-reference and edited-vs-reference scoring: word/character similarity, punctuation density, sentence casing and term coverage.
+- Added `benchmark-quality` CLI command that compares existing manifest windows against private local references and writes an ignored JSON report under `.local-quality/reports/` by default.
+- Added synthetic tests for scoring and timestamp-window extraction without private audio or transcripts.
+- Documented the local reference schema and commands for one-file and recursive benchmark runs.
+
+Checks:
+
+- `.venv/bin/python -m compileall app/src`;
+- `PYTHONPATH=app/src .venv/bin/python tests/test_transcript_repair.py` passed 7/7;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality --help`;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality outputs/pipeline/Носников_дапринт_+_нфло.manifest.json --references .local-quality/references --output .local-quality/reports/nosnikov-quality.json` produced 1 matched reference, raw token F1 0.606, edited token F1 0.638, winner `edited`;
+- `app/scripts/smoke_local.sh` passed;
+- `git diff --check`;
+- secret scan found no real HF/OpenAI tokens.
+
+Notes:
+
+- `P0-010` remains open for model-backed repair/targeted re-ASR; this slice only adds the measurement loop needed before choosing a model.
+- Private reference snippets and generated benchmark reports must stay under ignored `.local-quality/`.
+
 ### Codex - SEC-P0-001 Security Hardening Review Fixes
 
 Status: DELIVERED (2026-06-28). Review fixes on top of Claude's hardening branch.

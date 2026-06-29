@@ -2,7 +2,45 @@
 
 Дата: 2026-06-27.
 Автор: Claude (analysis track).
-Статус: анализ, код не менялся.
+Статус: исторический анализ. Новый рабочий benchmark-контур реализован командой `benchmark-quality`; приватные reference snippets и отчеты должны храниться в ignored `.local-quality/`, а не добавляться в `docs/`.
+
+## Current Local Benchmark Workflow
+
+Для новых проверок качества использовать local-only файлы:
+
+```text
+.local-quality/references/*.json
+.local-quality/reports/*.json
+```
+
+Минимальная схема reference-файла:
+
+```json
+{
+  "references": [
+    {
+      "id": "nosnikov-000008-000139",
+      "source": "Носников дапринт + нфло.m4a",
+      "start": "00:00:08",
+      "end": "00:01:39",
+      "reference": "Paste trusted external-service or manual text here.",
+      "terms": ["email", "НФЛО"]
+    }
+  ]
+}
+```
+
+Команда:
+
+```bash
+PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality \
+  outputs/pipeline \
+  --recursive \
+  --references .local-quality/references \
+  --output .local-quality/reports/transcript-quality-benchmark.json
+```
+
+Отчет сравнивает raw и `*.edited.*` окна по token F1, word/character similarity, пунктуации, регистру и покрытию терминов. Token F1 удобнее для быстрого чтения, потому что не обнуляется от небольшого лишнего контекста вокруг окна. По умолчанию отчет содержит private excerpts, поэтому его нельзя коммитить.
 
 ## Задача
 

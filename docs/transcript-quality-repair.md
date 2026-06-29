@@ -92,6 +92,7 @@ Private local benchmark:
 - user-selected problematic spans from real recordings;
 - optional reference text from another trusted service or manual correction;
 - stored under ignored local path, for example `.local-quality/`, never committed.
+- run with `benchmark-quality` against existing manifest files; it compares raw transcript windows and deterministic edited windows with local references.
 
 Scoring should track:
 
@@ -102,12 +103,63 @@ Scoring should track:
 - no hallucinated new claims;
 - raw/edited diff readability.
 
+## Local Reference Benchmark
+
+Private references live outside git:
+
+```text
+.local-quality/
+  references/
+    nosnikov-external-service.json
+    module-3-day-2-snippets.json
+  reports/
+    transcript-quality-benchmark.json
+```
+
+Reference file schema:
+
+```json
+{
+  "references": [
+    {
+      "id": "nosnikov-000008-000139",
+      "source": "Носников дапринт + нфло.m4a",
+      "start": "00:00:08",
+      "end": "00:01:39",
+      "reference": "Paste trusted external-service or manual transcript text here.",
+      "terms": ["email", "НФЛО"]
+    }
+  ]
+}
+```
+
+Run benchmark for one result:
+
+```bash
+PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality \
+  "outputs/pipeline/Носников_дапринт_+_нфло.manifest.json" \
+  --references .local-quality/references \
+  --output .local-quality/reports/nosnikov-quality.json
+```
+
+Run for all pipeline results:
+
+```bash
+PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality \
+  outputs/pipeline \
+  --recursive \
+  --references .local-quality/references
+```
+
+The report contains average raw/edited token F1, word similarity, character similarity, punctuation density, term coverage and per-snippet winners. Token F1 is the main quick-read metric because it is more tolerant when an excerpt captures a little extra neighboring speech. With default `--include-excerpts`, the JSON report contains private transcript text, so keep it under `.local-quality/`.
+
 ## First Implementation Slice
 
 1. Done: add a `repair-quality` CLI command that reads existing manifests and transcripts and produces `*.repair.json` with detected suspicious spans only.
 2. Done: add synthetic tests for span detection without private data.
 3. Done: add edited export generation for punctuation/casing repair with a deterministic local rule-based baseline.
-4. Add optional LM Studio repair profile behind explicit config.
-5. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
+4. Done: add `benchmark-quality` for private local reference snippets in ignored `.local-quality/`.
+5. Add optional LM Studio repair profile behind explicit config.
+6. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
 
 This order gives us a safe baseline before asking a neural model to rewrite anything.

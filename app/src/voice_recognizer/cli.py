@@ -38,7 +38,15 @@ from voice_recognizer.gigastt import (
     write_plain_text,
     write_readable_markdown,
 )
-from voice_recognizer.transcript_repair import build_repair_report, write_edited_exports, write_repair_report
+from voice_recognizer.transcript_repair import (
+    build_quality_benchmark_report,
+    build_repair_report,
+    load_quality_references,
+    render_edited_segments,
+    summarize_quality_benchmark_entries,
+    write_edited_exports,
+    write_repair_report,
+)
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -810,6 +818,85 @@ def _write_manifest_repair_report(
     return "updated", repair_path, span_count
 
 
+def _build_manifest_quality_benchmark_report(
+    manifest_path: Path,
+    references_path: Path,
+    *,
+    include_excerpts: bool,
+    max_gap_seconds: float = 1.8,
+    smooth_speakers: bool = True,
+    speaker_island_max_words: int = 2,
+    speaker_island_max_seconds: float = 1.2,
+    speaker_bridge_gap_seconds: float = 0.8,
+) -> dict[str, object]:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"could not read manifest: {error}") from error
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest is not a JSON object")
+
+    references = load_quality_references(references_path)
+    asr_json = _manifest_artifact_path(manifest_path, manifest.get("asr_json"), required=True)
+    diarization_json = _manifest_artifact_path(manifest_path, manifest.get("diarization_json"), required=False)
+    result = load_result(asr_json)
+    result_for_speakers = result
+    if diarization_json is not None:
+        result_for_speakers = assign_speakers(
+            result,
+            load_diarization_json(diarization_json),
+            smooth=smooth_speakers,
+            island_max_words=speaker_island_max_words,
+            island_max_seconds=speaker_island_max_seconds,
+            bridge_gap_seconds=speaker_bridge_gap_seconds,
+        )
+    raw_segments = segment_words(result_for_speakers.words, max_gap_seconds=max_gap_seconds)
+    edited_segments = render_edited_segments(raw_segments)
+    return build_quality_benchmark_report(
+        manifest_path=manifest_path,
+        source_name=_manifest_source_label(manifest, manifest_path),
+        references=references,
+        raw_segments=raw_segments,
+        edited_segments=edited_segments,
+        include_excerpts=include_excerpts,
+    )
+
+
+def _combined_quality_benchmark_report(
+    *,
+    target: Path,
+    references_path: Path,
+    reports: list[dict[str, object]],
+    include_excerpts: bool,
+) -> dict[str, object]:
+    entries: list[dict[str, object]] = []
+    for report in reports:
+        raw_entries = report.get("entries")
+        if isinstance(raw_entries, list):
+            entries.extend(entry for entry in raw_entries if isinstance(entry, dict))
+    return {
+        "quality_benchmark_version": 1,
+        "created_at": time.time(),
+        "mode": "local-reference-batch",
+        "target": str(target),
+        "references": str(references_path),
+        "include_excerpts": include_excerpts,
+        "summary": summarize_quality_benchmark_entries(entries),
+        "manifest_count": len(reports),
+        "manifests": reports,
+        "notes": [
+            "Reference snippets and benchmark reports are local-only by default.",
+            "Keep this file under ignored .local-quality/ unless it is sanitized.",
+        ],
+    }
+
+
+def _benchmark_output_path(path: Path) -> Path:
+    if path.suffix.lower() == ".json":
+        return path
+    return path / "transcript-quality-benchmark.json"
+
+
 def _repair_report_path(manifest_path: Path) -> Path:
     name = manifest_path.name
     if name.endswith(".manifest.json"):
@@ -1491,6 +1578,113 @@ def repair_quality(
             table.add_row(str(manifest_path), "skipped", "-", "yes" if write_edited else "no", str(repair_path))
     console.print(table)
     console.print(f"[cyan]Updated: {updated}, skipped: {skipped}, failed: {failed}.[/cyan]")
+
+
+@app.command("benchmark-quality")
+def benchmark_quality(
+    target: Path = typer.Argument(..., exists=True, readable=True, help="Manifest JSON file or directory with manifests."),
+    references: Path = typer.Option(
+        Path(".local-quality/references"),
+        "--references",
+        "-r",
+        help="Ignored local directory or JSON/JSONL file with reference snippets.",
+    ),
+    output: Path = typer.Option(
+        Path(".local-quality/reports/transcript-quality-benchmark.json"),
+        "--output",
+        "-o",
+        help="Output JSON report path or directory. Default is ignored by git.",
+    ),
+    recursive: bool = typer.Option(False, "--recursive", "-R", help="Find manifests recursively when target is a directory."),
+    include_excerpts: bool = typer.Option(
+        True,
+        "--include-excerpts/--no-excerpts",
+        help="Include private reference/raw/edited snippets in the local report.",
+    ),
+    max_gap_seconds: float = typer.Option(1.8, "--max-gap"),
+    smooth_speakers: bool = typer.Option(True, "--smooth-speakers/--no-smooth-speakers"),
+    speaker_island_max_words: int = typer.Option(2, "--speaker-island-max-words"),
+    speaker_island_max_seconds: float = typer.Option(1.2, "--speaker-island-max-seconds"),
+    speaker_bridge_gap_seconds: float = typer.Option(0.8, "--speaker-bridge-gap"),
+) -> None:
+    """Compare raw and edited transcript windows against private local references."""
+    if not references.exists():
+        console.print(f"[yellow]No local reference snippets found:[/yellow] {references}")
+        console.print(
+            "[cyan]Create an ignored JSON file under .local-quality/references/ "
+            "with fields: id, source, start, end, reference, terms.[/cyan]"
+        )
+        return
+
+    manifests = _iter_manifest_paths(target, recursive=recursive)
+    if not manifests:
+        console.print(f"[yellow]No manifest files found in {target}.[/yellow]")
+        return
+
+    table = Table(title="Transcript Quality Benchmark")
+    table.add_column("Manifest")
+    table.add_column("Refs")
+    table.add_column("Raw token F1")
+    table.add_column("Edited token F1")
+    table.add_column("Winner")
+    reports: list[dict[str, object]] = []
+    failed = 0
+    for manifest_path in manifests:
+        try:
+            report = _build_manifest_quality_benchmark_report(
+                manifest_path,
+                references,
+                include_excerpts=include_excerpts,
+                max_gap_seconds=max_gap_seconds,
+                smooth_speakers=smooth_speakers,
+                speaker_island_max_words=speaker_island_max_words,
+                speaker_island_max_seconds=speaker_island_max_seconds,
+                speaker_bridge_gap_seconds=speaker_bridge_gap_seconds,
+            )
+        except ValueError as error:
+            failed += 1
+            table.add_row(str(manifest_path), "error", "-", "-", str(error))
+            continue
+        reports.append(report)
+        summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+        refs = str(summary.get("reference_count", 0))
+        raw_similarity = _score_label(summary.get("raw_avg_token_f1"))
+        edited_similarity = _score_label(summary.get("edited_avg_token_f1"))
+        winner = _summary_winner(summary)
+        table.add_row(str(manifest_path), refs, raw_similarity, edited_similarity, winner)
+
+    output_path = _benchmark_output_path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(
+            _combined_quality_benchmark_report(
+                target=target,
+                references_path=references,
+                reports=reports,
+                include_excerpts=include_excerpts,
+            ),
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    console.print(table)
+    console.print(f"[green]Benchmark report:[/green] {output_path}")
+    console.print(f"[cyan]Manifests: {len(reports)}, failed: {failed}.[/cyan]")
+
+
+def _score_label(value: object) -> str:
+    return f"{float(value):.3f}" if isinstance(value, int | float) else "-"
+
+
+def _summary_winner(summary: dict[str, object]) -> str:
+    edited = int(summary.get("edited_better_count") or 0)
+    raw = int(summary.get("raw_better_count") or 0)
+    if edited > raw:
+        return "edited"
+    if raw > edited:
+        return "raw"
+    return "tie"
 
 
 @app.command("relabel-speakers")
