@@ -58,6 +58,40 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-005 Handy Pipeline Inspection
+
+Status: DELIVERED (2026-06-29). Handy/GigaAM dictation path inspected.
+
+Scope:
+
+- local Handy app/model inventory
+- `docs/local-models.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User asked whether we can dissect how Handy achieves high-quality GigaAM v3 dictation and whether that explains why our current tests did not really advance quality.
+
+What changed:
+
+- Inspected `/Applications/Handy.app` metadata: Handy `0.8.3`, bundle id `com.pais.handy`, native `arm64`.
+- Inspected non-private settings/model inventory under `~/Library/Application Support/com.pais.handy`.
+- Found selected model `gigaam-v3-e2e-ctc`, local model `giga-am-v3-int8/model.int8.onnx`, vocab, and bundled `silero_vad_v4.onnx`.
+- Found binary clues for `transcribe-rs-0.3.8`, ONNX Runtime, CTC greedy decode, VAD, word correction, custom words/fillers, and optional LLM post-processing providers.
+- Confirmed user settings have `post_process_enabled: false`, so default high-quality dictation is not explained by enabled cloud/local LLM post-processing.
+- Documented that Handy appears to be a dictation/VAD app, not a diarization solution; no local speaker-separation model was found.
+
+Checks:
+
+- `git status --short` before inspection was clean.
+- Only metadata/settings/model filenames were inspected; private `history.db` and recordings were not read.
+
+Notes:
+
+- Strong next candidate is `handy-gigaam-v3-e2e-ctc`, implemented via clean ONNX/GigaAM runtime, not private Handy app code.
+- This is likely more relevant to quality than another CPU whisper.cpp experiment.
+
 ### Codex - P0-010 Local Whisper Candidate Benchmark Run
 
 Status: DELIVERED (2026-06-29). First real Handy/whisper.cpp quality run.

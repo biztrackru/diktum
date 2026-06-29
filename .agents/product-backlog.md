@@ -178,6 +178,7 @@ Acceptance:
 - Delivered candidate benchmark slice: `benchmark-quality --candidate name=path` can score local `.txt`, `.md`, `.docx`, `.srt` and `.vtt` outputs from Speech2Text/FluidAudio/FunASR/WhisperX/Whisper before any ensemble merge is attempted.
 - Delivered research slice: MacWhisper/WhisperKit and Handy/whisper.cpp are documented as separate local Whisper candidates for the same benchmark loop.
 - Delivered first Whisper experiment: Homebrew `whisper.cpp 1.9.1` with Handy `ggml-large-v3-q5_0.bin` ran on the first `Носников` reference window; CPU/BLAS build was slow and scored below current edited GigaSTT.
+- Delivered Handy inspection slice: Handy's high-quality dictation path appears to be `gigaam-v3-e2e-ctc` ONNX with Silero VAD and CTC decoding, not the current GigaSTT split RNNT pipeline and not enabled LLM post-processing.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 
 ### P0-008 Installable Layout And Update-Safe Data Split
@@ -308,6 +309,7 @@ Acceptance:
 - Handy/Wisper/LM Studio assets описаны как reusable/not reusable без догадок.
 - Delivered research slice: Handy `ggml-large-v3-q5_0.bin` maps to future `whispercpp-handy`; MacWhisper `openai_whisper-large-v3-v20240930` maps to future `macwhisper-whisperkit`; `faster-whisper` requires separate CTranslate2 model download/convert.
 - Delivered first runtime slice: `whisper-cli` is installed, but `whispercpp-handy` should not be default because the current Homebrew build has no GPU/Metal and did not improve the `Носников` quality benchmark.
+- Delivered Handy inspection slice: Handy `giga-am-v3-int8/model.int8.onnx` maps to a future `handy-gigaam-v3-e2e-ctc` candidate; it needs a clean ONNX/e2e runtime and should not depend on private Handy app code.
 
 ### P0-006 Speaker Quality Improvement Loop
 

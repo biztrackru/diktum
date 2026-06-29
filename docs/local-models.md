@@ -7,7 +7,7 @@
 | Backend | Статус | Комментарий |
 | --- | --- | --- |
 | `gigastt-gigaam-v3` | работает | Текущий основной ASR: GigaSTT с GigaAM v3 RNNT из `.models/gigastt`. |
-| `handy-gigaam-v3` | кандидат | Handy-модель найдена, но это single-file ONNX, не совместимый напрямую с GigaSTT split RNNT files. |
+| `handy-gigaam-v3-e2e-ctc` | главный кандидат | Handy использует GigaAM v3 e2e CTC ONNX через свой runtime; это не совместимо напрямую с текущим GigaSTT split RNNT, но объясняет качество диктовки и заслуживает отдельного engine profile. |
 | `handy-whispercpp-large-v3-q5_0` | кандидат | Handy Whisper Large v3 найден в формате `ggml`; чистый runtime `whisper.cpp 1.9.1` установлен через Homebrew, но текущая сборка работает CPU/BLAS без Metal/GPU. |
 | `macwhisper-whisperkit-large-v3-v20240930` | кандидат | Whisper Transcription/MacWhisper скачал CoreML WhisperKit large-v3-v20240930; чистый runtime - Argmax WhisperKit/CLI, не приватные app bundles. |
 | `faster-whisper-large-v3` | кандидат/отложен | Переносимый Python/CTranslate2 путь, но найденные локальные `ggml`/CoreML модели напрямую не переиспользует; нужен отдельный download/convert. |
@@ -18,20 +18,40 @@
 
 ### Handy
 
-Directory: `~/Library/Application Support/com.pais.handy/models`
+App: `/Applications/Handy.app`
+
+Bundle id: `com.pais.handy`, observed version `0.8.3`, native `arm64`.
+
+App data: `~/Library/Application Support/com.pais.handy`
+
+Model directory: `~/Library/Application Support/com.pais.handy/models`
 
 - `giga-am-v3-int8/model.int8.onnx` — около 214 MB.
 - `giga-am-v3-int8/vocab.txt`.
 - `ggml-large-v3-q5_0.bin` — около 1.0 GB, Whisper Large v3 в формате whisper.cpp/ggml.
+- App-bundled VAD: `/Applications/Handy.app/Contents/Resources/resources/models/silero_vad_v4.onnx` — около 1.7 MB.
+- App-bundled GigaAM vocab copy: `/Applications/Handy.app/Contents/Resources/resources/models/gigaam_vocab.txt`.
+- User settings show `selected_model: gigaam-v3-e2e-ctc`, `selected_language: auto`, `ort_accelerator: auto`, `word_correction_threshold: 0.18`.
+- User settings show `post_process_enabled: false`; `transcribe_with_post_process` exists but is a separate shortcut/action, not the default dictation path.
+- Binary clues mention `transcribe-rs-0.3.8`, `transcribe_rs::onnx::gigaam`, `decode/ctc.rs`, `Greedy decode`, ONNX Runtime, CoreML, Metal, Accelerate, `silero_vad_v4.onnx`, `custom_words`, `custom_filler_words`, and LLM post-processing providers.
+- Binary model catalog includes `gigaam-v3-e2e-ctc` with label `GigaAM v3` and description `Russian speech recognition. Fast and accurate.` Download source in the binary points to Handy's own model archive URL and checksum.
 
 Вывод:
 
+- The high dictation quality is likely not from Whisper and not from enabled LLM post-processing. It is most likely the combination of GigaAM v3 e2e CTC, VAD-based short utterance handling, ONNX Runtime acceleration, token-level word correction, and dictation-length audio.
+- Handy's GigaAM path is a better next quality target than another CPU whisper.cpp run.
+- Handy does not appear to solve our diarization problem. It is a dictation app with VAD, history and optional post-processing; no local speaker-separation model was found in its app/data inventory.
+- The model asset may be reusable as read-only local input, but Handy's private runtime/app code should not be embedded or copied into our product.
+- Clean integration paths:
+  - use the official/open GigaAM e2e CTC/RNNT runtime if it can load equivalent weights;
+  - use an ONNX Runtime based local profile for `model.int8.onnx` and `vocab.txt` if we can implement/validate the CTC feature extraction and greedy decode;
+  - export Handy dictation output only for short benchmark comparison, not as an automated dependency.
 - Whisper `.bin` можно потенциально использовать через `whisper.cpp`.
 - На этой машине установлен `whisper-cpp 1.9.1` из Homebrew: `/usr/local/bin/whisper-cli`, `ggml 0.15.3`, `libomp 22.1.8`.
 - Фактический smoke на первых 120 секундах `Носников`: модель загрузилась как `large v3`, но backend сообщил `no GPU found` и работал через CPU/BLAS. 120 секунд аудио заняли около 248 секунд.
 - По private benchmark reference `Носников` SRT-кандидат `whispercpp-handy` получил token F1 `0.511` против текущего edited GigaSTT `0.638`; победил `edited`.
 - Для benchmark не нужно копировать модель в git: runtime может читать файл read-only или мы можем положить symlink/copy в ignored `.models/whisper/`.
-- GigaAM ONNX из Handy пока не подключен: `gigastt` ожидает другой набор файлов (`encoder/decoder/joint/vocab`) и не принимает этот single-file ONNX напрямую.
+- GigaAM ONNX из Handy пока не подключен: `gigastt` ожидает другой набор файлов (`encoder/decoder/joint/vocab`) и не принимает этот single-file e2e CTC ONNX напрямую.
 - Нельзя безопасно писать временные файлы в папку Handy; свои модели держим в `.models/`.
 
 ### GigaSTT
