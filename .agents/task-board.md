@@ -28,34 +28,7 @@ Definition of "normal local product":
 
 ## Active Claims
 
-### Codex - P0-008 Trial Distribution Readiness
-
-Status: CLAIMED (2026-06-29).
-
-Scope:
-
-- `.agents/product-backlog.md`
-- `.agents/task-board.md`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `app/scripts/build_install_pack.sh`
-- `app/scripts/setup_local_mac.sh`
-- `app/scripts/start_server.sh`
-- `app/scripts/stop_server.sh`
-- root `*.command`
-- `README.md`
-- distribution/trial docs as needed
-
-Goal:
-
-- Stop model research as active product work and prepare the current best local product for real-user private trial distribution and feedback.
-
-Acceptance:
-
-- Backlog makes packaging/distribution the current focus and defers experimental ASR engines that did not beat the current baseline.
-- Trial package layout clearly separates shipped app files from local user/runtime data.
-- First-run/start/stop/check instructions are understandable for a non-technical Mac user.
-- Build/check commands produce a current trial artifact without committing private audio, outputs, models or tokens.
+No active claims.
 
 Next agent should pick exactly one `READY` task from `.agents/product-backlog.md`, add a claim here, and then edit files.
 
@@ -84,6 +57,53 @@ Notes:
 ```
 
 ## Delivery Journal
+
+### Codex - P0-008 Trial Distribution Readiness
+
+Status: DELIVERED (2026-06-29). Private trial packaging and feedback loop prepared.
+
+Scope:
+
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `README.md`
+- `app/scripts/build_install_pack.sh`
+- `docs/private-trial-release.md`
+- `docs/local-mac-product-plan.md`
+- `docs/implementation-plan.md`
+- `docs/local-models.md`
+- `docs/handy-gigaam-e2e-runtime.md`
+
+Trigger:
+
+- User decided to stop ASR/model exploration for now and prepare the current best local product for distribution and real-user feedback.
+
+What changed:
+
+- Product/backlog/agent instructions now make private trial distribution the active focus.
+- `P0-010` text-quality research is paused for private trial; `P0-005` engine registry is deferred until after real-user feedback or a benchmark-winning engine.
+- Handy GigaAM e2e CTC docs now explicitly say not to integrate it in the private trial because it did not beat current edited GigaSTT.
+- Trial pack build now writes `VERSION.txt`, `TRIAL_RELEASE_NOTES.txt` and `FEEDBACK_TEMPLATE.txt`.
+- Added `docs/private-trial-release.md` with release acceptance, archive contents checks and feedback triage.
+- README and local Mac plan now describe the private trial baseline and feedback artifacts.
+
+Checks:
+
+- `zsh -n app/scripts/*.sh`;
+- `.venv/bin/python -m compileall app/src`;
+- `git diff --check`;
+- secret scan over `docs .agents app AGENTS.md CLAUDE.md README.md`;
+- `app/scripts/smoke_local.sh`;
+- `app/scripts/build_install_pack.sh`;
+- archive inspection confirmed expected launchers/docs/version/feedback files and no private `.env`, `.venv`, `.models`, `.cache`, audio, generated outputs or transcripts.
+
+Notes:
+
+- Baseline for private trial is `gigastt-gigaam-v3` plus edited exports.
+- First inspected pack before final delivery commit: `.dist/Voice Recognizer Trial 20260629-233700.zip`.
+- A final clean artifact should be rebuilt after the delivery commit so `VERSION.txt` points at the final commit.
 
 ### Codex - P0-005 Handy GigaAM e2e Runtime Spike
 

@@ -196,7 +196,7 @@ Acceptance:
 
 ### P0-008 Installable Layout And Update-Safe Data Split
 
-Status: CLAIMED (2026-06-29) for private trial distribution readiness.
+Status: DELIVERED for private trial distribution readiness (2026-06-29). Full update-safe `app + user-data` migration remains future polish after user feedback.
 
 Goal: отделить обновляемый код от локальных пользовательских данных, чтобы будущий updater мог заменять приложение без риска для `.env`, `.venv`, `.models`, `Inbox`, `outputs`, `logs`.
 
