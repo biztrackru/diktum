@@ -155,8 +155,8 @@ VoiceRecognizerLocal/
 Trial pack status:
 
 - архив создается в `.dist/Voice Recognizer Trial <timestamp>.zip`;
-- в архив входят launchers, `app/`, README, `START_HERE.txt`, `VERSION.txt`, `TRIAL_RELEASE_NOTES.txt`, `FEEDBACK_TEMPLATE.txt`, selected docs, пустые `Inbox/` и `outputs/`;
-- в архив не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио, generated transcripts и приватные outputs;
+- в архив входят только пользовательские файлы: launchers, `app/`, `START_HERE.txt`, `VERSION.txt`, `FEEDBACK_TEMPLATE.txt`, пустые `Inbox/` и `outputs/`;
+- в архив не входят внутренние docs/README/release notes, `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио, generated transcripts и приватные outputs;
 - приемочный сценарий для Mac супруги записан в `docs/spouse-mac-install-trial.md` и пройден для private trial;
 - процесс следующей private trial сборки и сбора отзывов записан в `docs/private-trial-release.md`;
 - перед новой сборкой можно запускать `app/scripts/smoke_local.sh`.

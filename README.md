@@ -119,7 +119,7 @@ app/scripts/build_install_pack.sh
 
 Скрипт создаст `.dist/Voice Recognizer Trial <timestamp>.zip`.
 
-В архив входят launchers, `START_HERE.txt`, `VERSION.txt`, `TRIAL_RELEASE_NOTES.txt`, `FEEDBACK_TEMPLATE.txt`, `app/`, README и install-checklist. В архив намеренно не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио из `Inbox/` и результаты из `outputs/`.
+В архив входят только пользовательские файлы: launchers, `START_HERE.txt`, `VERSION.txt`, `FEEDBACK_TEMPLATE.txt`, `app/`, пустые `Inbox/` и `outputs/`. В архив намеренно не входят внутренние `docs/`, README, `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио из `Inbox/` и результаты из `outputs/`.
 
 HF token нужен только для pyannote, то есть для разделения записи по спикерам. Для семейной проверки лучше создать отдельный Hugging Face read-only token, передать его отдельно от zip и вставить в setup скрытым вводом. Не вкладывайте реальный token в архив; при необходимости такой тестовый token можно потом отозвать в Hugging Face settings.
 
@@ -142,7 +142,7 @@ Setup и doctor пишут локальные диагностические л�
 4. Затем дважды кликнуть `Настроить Voice Recognizer.command`.
 5. После setup запустить `Проверить Voice Recognizer.command`.
 6. Если doctor показывает `failures=0`, запустить `Запустить Voice Recognizer.command`.
-7. Провести сценарий из `docs/spouse-mac-install-trial.md`.
+7. После теста заполнить `FEEDBACK_TEMPLATE.txt`.
 
 Про macOS Gatekeeper: текущий trial pack не подписан Apple Developer ID и не notarized, поэтому macOS может предлагать `Переместить в корзину`. Малый workaround - снять quarantine-метку с распакованной папки через `Разблокировать Voice Recognizer.command` или Terminal:
 

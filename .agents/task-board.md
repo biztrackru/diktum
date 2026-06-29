@@ -58,6 +58,44 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-008 External Trial Pack Cleanup
+
+Status: DELIVERED (2026-06-30). User-facing archive trimmed.
+
+Scope:
+
+- `app/scripts/build_install_pack.sh`
+- `README.md`
+- `docs/private-trial-release.md`
+- `docs/local-mac-product-plan.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User reviewed the final pack and noted that external users do not need our internal docs, research notes, decisions and project kitchen.
+
+What changed:
+
+- Trial pack root now contains only launchers, `START_HERE.txt`, `VERSION.txt`, `FEEDBACK_TEMPLATE.txt`, `app/`, empty `Inbox/` and empty `outputs/`.
+- Removed `README.md`, `SECURITY.md`, `LICENSE`, `docs/`, `TRIAL_RELEASE_NOTES.txt` and `PACK_CONTENTS.txt` from the external archive.
+- Rewrote generated `START_HERE.txt` to be self-contained and product-facing.
+- Simplified generated `VERSION.txt` to a short support build id.
+- Updated internal release docs to assert the minimal external archive shape.
+
+Checks:
+
+- `zsh -n app/scripts/*.sh`;
+- `git diff --check`;
+- secret scan over changed files;
+- `app/scripts/smoke_local.sh`;
+- test build `.dist/Voice Recognizer Trial 20260630-002918.zip`;
+- archive root inspection confirmed only user-facing top-level files/folders;
+- archive exclusion scan found no internal docs, README, SECURITY, LICENSE, release notes, pack manifest, private `.env`, `.venv`, `.models`, `.cache`, logs, tools/bin, audio or generated outputs.
+
+Notes:
+
+- Rebuild the final artifact after this delivery commit so `VERSION.txt` includes the final commit id.
+
 ### Codex - P0-008 Trial Distribution Readiness
 
 Status: DELIVERED (2026-06-29). Private trial packaging and feedback loop prepared.
@@ -85,7 +123,7 @@ What changed:
 - Product/backlog/agent instructions now make private trial distribution the active focus.
 - `P0-010` text-quality research is paused for private trial; `P0-005` engine registry is deferred until after real-user feedback or a benchmark-winning engine.
 - Handy GigaAM e2e CTC docs now explicitly say not to integrate it in the private trial because it did not beat current edited GigaSTT.
-- Trial pack build now writes `VERSION.txt`, `TRIAL_RELEASE_NOTES.txt` and `FEEDBACK_TEMPLATE.txt`.
+- Trial pack build added version/feedback support; external-user cleanup later removed internal release notes from the zip.
 - Added `docs/private-trial-release.md` with release acceptance, archive contents checks and feedback triage.
 - README and local Mac plan now describe the private trial baseline and feedback artifacts.
 

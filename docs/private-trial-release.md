@@ -59,7 +59,8 @@ app/scripts/build_install_pack.sh
 - есть `VERSION.txt`;
 - есть `FEEDBACK_TEMPLATE.txt`;
 - есть launchers `Настроить`, `Проверить`, `Запустить`, `Остановить`, `Разблокировать`;
-- есть `app/`, `docs/`, пустые `Inbox/`, `outputs/`;
+- есть `app/`, пустые `Inbox/`, `outputs/`;
+- нет пользовательски лишних внутренних файлов: `docs/`, `README.md`, `SECURITY.md`, `LICENSE`, `TRIAL_RELEASE_NOTES.txt`, `PACK_CONTENTS.txt`;
 - нет `.env`, `.venv`, `.models`, `.cache`, `logs`, `tools/bin`, приватных аудио и generated transcripts.
 
 ## Что просить у тестировщика
