@@ -28,7 +28,34 @@ Definition of "normal local product":
 
 ## Active Claims
 
-No active claims.
+### Codex - P0-008 Trial Distribution Readiness
+
+Status: CLAIMED (2026-06-29).
+
+Scope:
+
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `app/scripts/build_install_pack.sh`
+- `app/scripts/setup_local_mac.sh`
+- `app/scripts/start_server.sh`
+- `app/scripts/stop_server.sh`
+- root `*.command`
+- `README.md`
+- distribution/trial docs as needed
+
+Goal:
+
+- Stop model research as active product work and prepare the current best local product for real-user private trial distribution and feedback.
+
+Acceptance:
+
+- Backlog makes packaging/distribution the current focus and defers experimental ASR engines that did not beat the current baseline.
+- Trial package layout clearly separates shipped app files from local user/runtime data.
+- First-run/start/stop/check instructions are understandable for a non-technical Mac user.
+- Build/check commands produce a current trial artifact without committing private audio, outputs, models or tokens.
 
 Next agent should pick exactly one `READY` task from `.agents/product-backlog.md`, add a claim here, and then edit files.
 

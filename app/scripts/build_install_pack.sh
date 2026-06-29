@@ -11,6 +11,16 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 PACK_NAME="Voice Recognizer Trial $STAMP"
 PACK_DIR="$DIST_DIR/$PACK_NAME"
 ARCHIVE="$DIST_DIR/$PACK_NAME.zip"
+GIT_BRANCH="$(git -C "$WORKSPACE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+GIT_COMMIT="$(git -C "$WORKSPACE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+GIT_DIRTY="unknown"
+if git -C "$WORKSPACE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git -C "$WORKSPACE_DIR" diff --quiet -- . && git -C "$WORKSPACE_DIR" diff --cached --quiet -- .; then
+    GIT_DIRTY="clean"
+  else
+    GIT_DIRTY="dirty"
+  fi
+fi
 
 cd "$WORKSPACE_DIR" || exit 1
 
@@ -50,6 +60,8 @@ Voice Recognizer Trial Pack
 7. Браузер должен открыться на http://127.0.0.1:8765/.
 8. Загрузите короткий .m4a/.mp3/.wav через web UI и запустите тест-фрагмент на 30-120 секунд.
 9. Для остановки дважды кликните "Остановить Voice Recognizer.command".
+10. После теста заполните "FEEDBACK_TEMPLATE.txt". В нем уже есть поля,
+    которые помогут быстро понять, что сломалось или что стоит улучшить.
 
 Если macOS блокирует .command файлы
 -----------------------------------
@@ -158,6 +170,116 @@ Setup можно запускать повторно: уже готовые ша
 TXT
 }
 
+write_version_file() {
+  cat > "$PACK_DIR/VERSION.txt" <<TXT
+Voice Recognizer Trial
+======================
+
+Build timestamp: $STAMP
+Git branch: $GIT_BRANCH
+Git commit: $GIT_COMMIT
+Git working tree at build time: $GIT_DIRTY
+
+Runtime data is local to the unpacked folder and is not part of this build:
+.env, .venv, .models, .cache, tools/bin, Inbox contents, outputs and logs.
+
+Baseline for this private trial:
+- ASR: GigaSTT / GigaAM v3 RNNT
+- Speaker separation: pyannote Community-1
+- User-facing transcript: edited exports when available
+- Alternate ASR engines: not included in this trial build
+TXT
+}
+
+write_release_notes() {
+  cat > "$PACK_DIR/TRIAL_RELEASE_NOTES.txt" <<'TXT'
+Voice Recognizer Private Trial Notes
+====================================
+
+Цель этой сборки
+----------------
+Проверить не лабораторное качество модели, а реальный путь пользователя:
+распаковал zip, запустил setup, открыл локальный web UI, обработал запись,
+переименовал спикеров, открыл итоговые файлы.
+
+Что сейчас должно работать
+--------------------------
+- локальная установка через double-click setup;
+- проверка окружения через doctor;
+- запуск/остановка локального web-сервера;
+- загрузка аудио через web UI;
+- очередь задач и отмена случайных запусков;
+- длинные файлы через ASR chunking;
+- разделение по спикерам;
+- переименование спикеров после результата;
+- Markdown/TXT exports, включая edited-текст.
+
+Известные ограничения
+---------------------
+- пакет пока не подписан Apple Developer ID и не notarized, поэтому macOS
+  может потребовать "Разблокировать Voice Recognizer.command";
+- первый setup скачивает зависимости и модели, нужен интернет;
+- HF token нужен для разделения по спикерам;
+- полное восстановление long-file job после падения сервера еще не финальное;
+- качество спикеров и текста может требовать ручной проверки на сложных записях;
+- альтернативные ASR-движки Handy/MacWhisper/Whisper не включены: они не
+  выиграли текущий benchmark у baseline.
+TXT
+}
+
+write_feedback_template() {
+  cat > "$PACK_DIR/FEEDBACK_TEMPLATE.txt" <<'TXT'
+Voice Recognizer Feedback
+=========================
+
+Пожалуйста, заполните после теста. Не прикладывайте .env, аудио, outputs или
+модели, если об этом отдельно не попросили.
+
+1. Mac model/chip:
+2. RAM:
+3. macOS version:
+4. Был ли Homebrew установлен до теста:
+5. Был ли Python установлен до теста:
+6. Был ли Hugging Face token готов до теста:
+
+Установка
+---------
+1. Получилось распаковать zip:
+2. Нужно было запускать "Разблокировать Voice Recognizer.command":
+3. "Настроить Voice Recognizer.command" дошел до конца:
+4. Что было непонятно в setup:
+5. "Проверить Voice Recognizer.command" показал failures=0:
+6. Если были ошибки, какие строки из logs/setup-latest.log или logs/doctor-latest.log можно прислать без токенов:
+
+Запуск и интерфейс
+------------------
+1. "Запустить Voice Recognizer.command" открыл браузер:
+2. Адрес был http://127.0.0.1:8765/:
+3. Файл загрузился через интерфейс:
+4. Очередь/статус задачи были понятны:
+5. Получилось остановить сервер:
+
+Результат
+---------
+1. Тип записи: интервью / обучение / встреча / другое:
+2. Длительность тестового файла:
+3. Сколько примерно спикеров:
+4. Разделение по спикерам помогло:
+5. Имена спикеров удалось применить:
+6. Итоговый текст пригоден для работы:
+7. Какие ошибки в тексте повторялись:
+8. Какие файлы результата удалось открыть:
+
+Оценка
+------
+1. Что помешало больше всего:
+2. Что было неожиданно удобно:
+3. Что обязательно исправить до следующей сборки:
+4. Можно ли дать эту сборку еще одному человеку:
+5. Дополнительные заметки:
+TXT
+}
+
 write_pack_manifest() {
   cat > "$PACK_DIR/PACK_CONTENTS.txt" <<TXT
 Voice Recognizer trial pack
@@ -167,6 +289,10 @@ Source: $WORKSPACE_DIR
 Included:
 - root *.command launchers
 - macOS quarantine unblock helper
+- START_HERE.txt
+- VERSION.txt
+- TRIAL_RELEASE_NOTES.txt
+- FEEDBACK_TEMPLATE.txt
 - app/src
 - app/scripts
 - app/config
@@ -217,12 +343,16 @@ copy_dir "app/config" "$PACK_DIR/app/config"
 
 copy_file "docs/local-mac-product-plan.md" "$PACK_DIR/docs/local-mac-product-plan.md"
 copy_file "docs/setup-secrets.md" "$PACK_DIR/docs/setup-secrets.md"
+copy_file "docs/private-trial-release.md" "$PACK_DIR/docs/private-trial-release.md"
 if [[ -f "docs/spouse-mac-install-trial.md" ]]; then
   copy_file "docs/spouse-mac-install-trial.md" "$PACK_DIR/docs/spouse-mac-install-trial.md"
 fi
 
 mkdir -p "$PACK_DIR/Inbox" "$PACK_DIR/outputs"
 write_start_here
+write_version_file
+write_release_notes
+write_feedback_template
 write_pack_manifest
 
 prune_runtime_files

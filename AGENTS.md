@@ -109,17 +109,18 @@ git diff --cached | rg --pcre2 -n "hf_(?!your_token_here)[A-Za-z0-9]{12,}|sk-[A-
 
 Текущий operational order:
 
-1. `P0-010 Transcript Quality Repair And Postprocessing`.
-2. `P0-008 Installable Layout And Update-Safe Data Split`.
-3. `P0-009 Release Channel And Manual Updater`.
-4. `P0-002 Durable Job Queue`.
-5. `P0-003 Long-File Resume And Progress`.
-6. `P0-004 Batch Reliability`.
-7. `P0-005 Engine Registry And Model Profiles`.
-8. `P0-006 Speaker Quality Improvement Loop`.
+1. `P0-008 Installable Layout And Update-Safe Data Split` / private trial distribution readiness.
+2. `P0-003 Long-File Resume And Progress` only if trial feedback or release acceptance exposes a blocker.
+3. `P0-004 Batch Reliability` only if trial feedback or release acceptance exposes a blocker.
+4. `P0-009 Release Channel And Manual Updater` after the first private trial artifact is stable.
+5. `P0-006 Speaker Quality Improvement Loop` after real-user feedback identifies speaker quality as the main blocker.
+6. `P0-010 Transcript Quality Repair And Postprocessing` after real-user feedback identifies text quality as the main blocker.
+7. `P0-005 Engine Registry And Model Profiles` deferred until an alternate engine beats the current baseline or users clearly need backend choice.
 
 `P0-001 Mac Install Acceptance` delivered for the private trial; only regressions/packaging polish should be tracked there.
 `P0-007 Local Smoke Suite` delivered; run `app/scripts/smoke_local.sh` before release/trial-pack steps and meaningful code changes.
+
+Current release decision: stop active ASR-model exploration for the private trial. Ship the strongest current baseline (`gigastt-gigaam-v3` plus edited exports), collect feedback from real users, then choose the next quality or reliability investment from evidence.
 
 Self-host/Docker/Cloud отложены до отдельного будущего этапа.
 

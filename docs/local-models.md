@@ -7,7 +7,7 @@
 | Backend | Статус | Комментарий |
 | --- | --- | --- |
 | `gigastt-gigaam-v3` | работает | Текущий основной ASR: GigaSTT с GigaAM v3 RNNT из `.models/gigastt`. |
-| `handy-gigaam-v3-e2e-ctc` | главный экспериментальный кандидат | Handy использует GigaAM v3 e2e CTC ONNX. Runtime spike подтвердил, что модель запускается через чистый `onnxruntime`; для продукта нужен segment-level ASR profile, VAD/chunk stitching и fallback на текущий GigaSTT. |
+| `handy-gigaam-v3-e2e-ctc` | отложенный эксперимент | Handy использует GigaAM v3 e2e CTC ONNX. Runtime spike подтвердил, что модель запускается через чистый `onnxruntime`, но первые кандидаты проиграли текущему edited GigaSTT на `Носников`; не включать в private trial. |
 | `handy-whispercpp-large-v3-q5_0` | кандидат | Handy Whisper Large v3 найден в формате `ggml`; чистый runtime `whisper.cpp 1.9.1` установлен через Homebrew, но текущая сборка работает CPU/BLAS без Metal/GPU. |
 | `macwhisper-whisperkit-large-v3-v20240930` | кандидат | Whisper Transcription/MacWhisper скачал CoreML WhisperKit large-v3-v20240930; чистый runtime - Argmax WhisperKit/CLI, не приватные app bundles. |
 | `faster-whisper-large-v3` | кандидат/отложен | Переносимый Python/CTranslate2 путь, но найденные локальные `ggml`/CoreML модели напрямую не переиспользует; нужен отдельный download/convert. |
@@ -54,8 +54,8 @@ Model directory: `~/Library/Application Support/com.pais.handy/models`
 - GigaAM ONNX из Handy пока не подключен: `gigastt` ожидает другой набор файлов (`encoder/decoder/joint/vocab`) и не принимает этот single-file e2e CTC ONNX напрямую.
 - Runtime spike по Handy e2e CTC задокументирован отдельно: `docs/handy-gigaam-e2e-runtime.md`.
 - ONNX model inputs: `features` float32 `[batch_size, 64, seq_len]` и `feature_lengths` int64 `[batch_size]`; output: `log_probs` float32 `[batch_size, seq_len, 257]`.
-- Чистый Python/ONNX Runtime POC на первых 10 секундах `Носников` дал пунктуированный/капитализированный текст. На первых 120 секундах private benchmark пока не обогнал current edited GigaSTT: fixed chunks `0.593`, pyannote speech turns `0.603`, current edited `0.638` token F1.
-- Причина, похоже, не в mel-preprocessing: он совпадает с upstream GigaAM. Главный недостающий слой - правильный VAD/chunk stitching и поддержка ASR segments без word-level timestamps.
+- Чистый Python/ONNX Runtime POC на первых 10 секундах `Носников` дал пунктуированный/капитализированный текст. На первых 120 секундах private benchmark не обогнал current edited GigaSTT: fixed chunks `0.593`, pyannote speech turns `0.603`, current edited `0.638` token F1.
+- Решение для private trial: не интегрировать в продукт сейчас. Вернуться только после реальных пользовательских отзывов, если текущий baseline упрется именно в ASR quality, а не в установку, batch, UX или стабильность.
 - Нельзя безопасно писать временные файлы в папку Handy; свои модели держим в `.models/`.
 
 ### GigaSTT

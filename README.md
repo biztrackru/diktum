@@ -69,6 +69,7 @@ Salute/Sber.
 - `docs/product-requirements.md` - текущие продуктовые требования: local-first/self-host, приватность, batch, выбор моделей, длинные файлы.
 - `docs/implementation-plan.md` - ближайший план реализации без публичной упаковки и лендинга.
 - `docs/local-mac-product-plan.md` - путь к локальному Mac-продукту для обычного пользователя.
+- `docs/private-trial-release.md` - как собирать private trial zip и собирать отзывы тестировщиков.
 - `docs/agent-workflow.md` - правила работы нескольких AI-агентов, prompts для UX/redesign и review ролей.
 - `AGENTS.md` и `CLAUDE.md` - корневые инструкции для Codex, Claude Code и других AI-агентов.
 - `.agents/` - task board, prompts и checklist для параллельной работы агентов.
@@ -108,6 +109,8 @@ Salute/Sber.
 
 ## Пробный установочный пак для другого Mac
 
+Текущий private trial baseline: `GigaSTT / GigaAM v3 RNNT` + edited exports. Альтернативные ASR-движки из Handy/MacWhisper/Whisper/FluidAudio исследованы, но не включены в trial pack, потому что пока не дали выигрыша на нашем benchmark.
+
 Для первой попытки установки на Mac другого пользователя собрать чистый trial pack:
 
 ```bash
@@ -116,7 +119,7 @@ app/scripts/build_install_pack.sh
 
 Скрипт создаст `.dist/Voice Recognizer Trial <timestamp>.zip`.
 
-В архив входят launchers, `app/`, README и install-checklist. В архив намеренно не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио из `Inbox/` и результаты из `outputs/`.
+В архив входят launchers, `START_HERE.txt`, `VERSION.txt`, `TRIAL_RELEASE_NOTES.txt`, `FEEDBACK_TEMPLATE.txt`, `app/`, README и install-checklist. В архив намеренно не входят `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио из `Inbox/` и результаты из `outputs/`.
 
 HF token нужен только для pyannote, то есть для разделения записи по спикерам. Для семейной проверки лучше создать отдельный Hugging Face read-only token, передать его отдельно от zip и вставить в setup скрытым вводом. Не вкладывайте реальный token в архив; при необходимости такой тестовый token можно потом отозвать в Hugging Face settings.
 

@@ -20,12 +20,15 @@ Do not prioritize Docker, cloud, public GitHub packaging, or a marketing landing
 
 Focus on:
 
+- private trial distribution readiness;
 - local Mac setup;
 - one-click launch/stop;
 - model/runtime setup diagnostics;
 - file upload and batch processing;
 - long file reliability;
 - speaker naming and export UX.
+
+Do not start new ASR engine research or UI work for alternate model profiles before private trial feedback. Current trial baseline is `gigastt-gigaam-v3` with edited exports.
 
 ## Boundaries
 

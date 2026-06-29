@@ -8,6 +8,8 @@
 
 Исполняемый backlog с task ID, scope и acceptance criteria ведется в `.agents/product-backlog.md`. Этот документ остается стратегическим планом этапов.
 
+Решение на private trial от 2026-06-29: остановить активный поиск альтернативных ASR-движков. Текущая сборка для пользователей должна идти на рабочем baseline `gigastt-gigaam-v3` + edited exports. Эксперименты Handy/MacWhisper/Whisper/FluidAudio остаются research notes до тех пор, пока реальные отзывы или benchmark не покажут явную необходимость возвращаться к ним.
+
 ## Аудит состояния на 2026-06-29
 
 Сделано:
@@ -26,8 +28,8 @@
 - durable job queue после перезапуска сервера;
 - полноценный long-file resume/progress по chunks/stages;
 - надежный batch на многочасовые наборы;
-- общий engine registry и реальные дополнительные local ASR profiles;
-- semantic repair итогового текста: пунктуация, регистр, явные ASR-искажения и сравнение raw/edited результата;
+- общий engine registry и реальные дополнительные local ASR profiles; отложено до отзывов, потому что кандидаты пока не выиграли baseline;
+- semantic repair итогового текста; базовый edited export и benchmark loop уже есть, расширение отложено до отзывов;
 - улучшение диаризации, а не только диагностика ее проблем.
 
 ## Этап 1. Надежная локальная база

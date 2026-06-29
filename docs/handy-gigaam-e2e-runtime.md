@@ -77,7 +77,11 @@ Private artifacts, не коммитить:
 
 ## Product decision
 
-Не нужно подключать Handy как приложение или копировать его private runtime. Чистый путь:
+Decision for the private trial build: do not integrate this engine now.
+
+Reason: the candidate is technically promising, but the first private benchmark did not beat the current edited GigaSTT baseline. For real-user feedback we should ship the strongest working pipeline we already have, not add an experimental ASR branch that increases setup/runtime complexity.
+
+Не нужно подключать Handy как приложение или копировать его private runtime. Если к этому вернемся после trial feedback, чистый путь такой:
 
 1. Сделать отдельный experimental engine profile `handy-gigaam-v3-e2e-ctc`.
 2. Сначала поддержать segment-level ASR output в pipeline:
@@ -94,15 +98,15 @@ Private artifacts, не коммитить:
    - e2e CTC дает cleaner text для тех же speech windows;
    - repair/ensemble выбирает между raw/edited/e2e по локальному confidence и reference benchmark.
 
-## Next implementation slice
+## Deferred implementation slice
 
-Минимальная полезная разработка:
+Минимальная полезная разработка, если после пользовательских отзывов снова понадобится ASR quality research:
 
-- `P0-005`: engine registry должен уметь показывать `handy-gigaam-v3-e2e-ctc` как `experimental/missing` с понятным next step;
+- `P0-005`: engine registry может показывать `handy-gigaam-v3-e2e-ctc` как `deferred/experimental` с понятным next step;
 - `P0-010`: добавить reusable local helper для CTC candidate generation из WAV + diarization turns, но пока не включать по умолчанию;
 - `P0-003/P0-004`: не смешивать с этой работой, потому что long-file resume и batch reliability не зависят от выбранного ASR.
 
-Definition of Done для следующего slice:
+Definition of Done для будущего slice:
 
 - candidate helper не читает приватные Handy history/recordings;
 - модель читается read-only из configured path или ignored `.models/`;

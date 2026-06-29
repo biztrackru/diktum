@@ -10,6 +10,17 @@
 
 Self-host, публичный GitHub, внешний лендинг и SwiftUI/native wrapper отложены до завершения локального продукта.
 
+## Current Release Decision
+
+Фокус с 2026-06-29: перестать расширять ASR research для private trial и собрать текущий лучший локальный продукт для дистрибуции реальным пользователям.
+
+Private trial baseline:
+
+- `gigastt-gigaam-v3` остается единственным рабочим ASR backend по умолчанию;
+- edited exports используются как основной пользовательский текст;
+- Handy/MacWhisper/Whisper/FluidAudio кандидаты остаются research notes и не входят в trial UX;
+- новые engine profiles не добавлять до первых отзывов, если они не показывают явного выигрыша на private benchmark.
+
 ## Что уже реально сделано
 
 - Локальный Python/web pipeline с GigaSTT/GigaAM v3 RNNT и pyannote diarization.
@@ -32,8 +43,8 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - Long-file story закрыта для ASR chunking, но не закрыта как полноценный resume/progress pipeline по этапам и chunks.
 - Batch UX есть, но нуждается в надежной job persistence, resume и итоговом отчете по пачке.
 - Есть мелкие UX-замечания из spouse-Mac теста: поле `Имена спикеров` в настройках запуска преждевременно, верхний workflow stepper выглядит как шум.
-- Выбор движков в UI пока по сути один рабочий backend: GigaSTT/GigaAM v3. Whisper/Handy/Wisper/LM Studio не интегрированы как реальные engine profiles; local Whisper inventory уже описывает MacWhisper/WhisperKit и Handy `ggml` как отдельных кандидатов.
-- Итоговый текст иногда теряет смысл из-за ASR-ошибок, плохой пунктуации/регистра, склеек слов и разрывов одной фразы между спикерами; диагностика есть, но semantic repair и сравнение raw/edited результата не реализованы.
+- Выбор движков в UI пока по сути один рабочий backend: GigaSTT/GigaAM v3. Это допустимо для private trial; альтернативные движки не включаем, пока они не выигрывают benchmark.
+- Итоговый текст иногда теряет смысл из-за ASR-ошибок, склеек слов и разрывов одной фразы между спикерами; deterministic edited export и benchmark loop уже есть, а semantic/LLM repair отложен до отзывов реальных пользователей.
 - Диаризация получила диагностику, но не получила системный quality-improvement loop: сравнение конфигураций, улучшение speaker-islands, overlap/uncertain regions и приемочный benchmark.
 - Speaker labeling работает в рамках результата, но speaker memory / повторное узнавание людей по голосу отложено.
 
@@ -152,7 +163,7 @@ Acceptance:
 
 ### P0-010 Transcript Quality Repair And Postprocessing
 
-Status: READY. Diagnostic and deterministic edited-export slices delivered on 2026-06-29; local LLM/targeted re-ASR remain open. Highest current quality priority; coordinate with `P0-005` and `P0-006`.
+Status: PAUSED for private trial. Diagnostic, deterministic edited-export and benchmark slices delivered on 2026-06-29; local LLM/targeted re-ASR remain open only after real-user feedback.
 
 Goal: получить качественный итоговый текст, в котором raw ASR остается доступным, а отдельный edited/repair слой исправляет пунктуацию, регистр, очевидные ASR-искажения, разрывы фраз между соседними сегментами и подозрительные места без выдумывания нового содержания.
 
@@ -181,10 +192,11 @@ Acceptance:
 - Delivered Handy inspection slice: Handy's high-quality dictation path appears to be `gigaam-v3-e2e-ctc` ONNX with Silero VAD and CTC decoding, not the current GigaSTT split RNNT pipeline and not enabled LLM post-processing.
 - Delivered Handy runtime spike: Handy `gigaam-v3-e2e-ctc` ONNX runs through clean `onnxruntime` preprocessing/CTC decode and produces punctuated text, but first fixed/pyannote-chunk candidates did not yet beat current edited GigaSTT on the private `Носников` reference.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
+- Product decision: no additional ASR/repair engine work before private trial distribution unless a trial-blocking bug appears.
 
 ### P0-008 Installable Layout And Update-Safe Data Split
 
-Status: READY after `P0-010` or when packaging work is explicitly selected.
+Status: CLAIMED (2026-06-29) for private trial distribution readiness.
 
 Goal: отделить обновляемый код от локальных пользовательских данных, чтобы будущий updater мог заменять приложение без риска для `.env`, `.venv`, `.models`, `Inbox`, `outputs`, `logs`.
 
@@ -289,7 +301,7 @@ Acceptance:
 
 ### P0-005 Engine Registry And Model Profiles
 
-Status: READY.
+Status: DEFERRED until after private trial feedback.
 
 Goal: превратить поле "ASR-движок" из почти статического выбора в общий registry CLI/Web с реальными профилями.
 
@@ -311,7 +323,7 @@ Acceptance:
 - Delivered research slice: Handy `ggml-large-v3-q5_0.bin` maps to future `whispercpp-handy`; MacWhisper `openai_whisper-large-v3-v20240930` maps to future `macwhisper-whisperkit`; `faster-whisper` requires separate CTranslate2 model download/convert.
 - Delivered first runtime slice: `whisper-cli` is installed, but `whispercpp-handy` should not be default because the current Homebrew build has no GPU/Metal and did not improve the `Носников` quality benchmark.
 - Delivered Handy inspection slice: Handy `giga-am-v3-int8/model.int8.onnx` maps to a future `handy-gigaam-v3-e2e-ctc` candidate; it needs a clean ONNX/e2e runtime and should not depend on private Handy app code.
-- Delivered Handy runtime spike: `handy-gigaam-v3-e2e-ctc` can run without Handy runtime code via `onnxruntime`; next implementation is a real experimental engine profile with segment-level output, VAD/chunk stitching and benchmark gating.
+- Delivered Handy runtime spike: `handy-gigaam-v3-e2e-ctc` can run without Handy runtime code via `onnxruntime`, but first candidates did not beat current edited GigaSTT. Do not integrate before private trial; keep as deferred research.
 
 ### P0-006 Speaker Quality Improvement Loop
 
