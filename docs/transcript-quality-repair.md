@@ -156,19 +156,29 @@ Compare external ASR candidates against the same references:
 ```bash
 mkdir -p .local-quality/candidates
 
-# Put private outputs from Speech2Text, FluidAudio, FunASR, WhisperX, etc. here.
+# Put private outputs from Speech2Text, FluidAudio, MacWhisper, whisper.cpp,
+# FunASR, WhisperX, etc. here.
 # Candidate files may be .txt, .md, .docx, or timestamped lines.
 PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality \
   "outputs/pipeline/Носников_дапринт_+_нфло.manifest.json" \
   --references .local-quality/references \
   --candidate speech2text=.local-quality/candidates/nosnikov-speech2text.txt \
   --candidate parakeet=.local-quality/candidates/nosnikov-parakeet.txt \
+  --candidate macwhisper-whisperkit=.local-quality/candidates/nosnikov-macwhisper-whisperkit.txt \
+  --candidate whispercpp-handy=.local-quality/candidates/nosnikov-whispercpp-handy.txt \
   --output .local-quality/reports/nosnikov-asr-candidates.json
 ```
 
 The report contains average raw/edited token F1, word similarity, character similarity, punctuation density, term coverage and per-snippet winners. Token F1 is the main quick-read metric because it is more tolerant when an excerpt captures a little extra neighboring speech. With default `--include-excerpts`, the JSON report contains private transcript text, so keep it under `.local-quality/`.
 
 Candidate outputs are a measurement step, not an automatic merge. Full transcripts without timestamps can be used, but short snippets or timestamped exports score much more fairly against short reference windows. The merge layer should only come after we know which engine wins on which type of span: terms, punctuation, speaker boundaries, noisy speech, or chunk edges.
+
+Local Whisper candidates are intentionally split into separate names:
+
+- `macwhisper-whisperkit` - exported text from Whisper Transcription/MacWhisper using its local WhisperKit CoreML model.
+- `whispercpp-handy` - text produced by a clean `whisper.cpp` runtime using Handy's local `ggml-large-v3-q5_0.bin`.
+
+Do not compare them as one generic "Whisper" result: the model format, runtime, speed and punctuation behavior can differ enough to matter.
 
 ## First Implementation Slice
 
@@ -177,7 +187,8 @@ Candidate outputs are a measurement step, not an automatic merge. Full transcrip
 3. Done: add edited export generation for punctuation/casing repair with a deterministic local rule-based baseline.
 4. Done: add `benchmark-quality` for private local reference snippets in ignored `.local-quality/`.
 5. Done: extend `benchmark-quality` with `--candidate name=path` so alternative ASR outputs can be compared before designing an ensemble merge.
-6. Add optional LM Studio repair profile behind explicit config.
-7. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
+6. Add local Whisper candidate runs to the private benchmark: MacWhisper export first, then `whisper.cpp` with Handy's `ggml` model if we install/build the runtime.
+7. Add optional LM Studio repair profile behind explicit config.
+8. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
 
 This order gives us a safe baseline before asking a neural model to rewrite anything.

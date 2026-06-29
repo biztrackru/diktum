@@ -84,6 +84,48 @@ Source: https://github.com/QuentinFuxa/WhisperLiveKit
 
 Итог: не заменяем наш продукт WhisperLiveKit'ом, но до implementation setup/engine registry делаем короткое сравнение и берем только узкие инфраструктурные идеи.
 
+## Local Whisper ecosystem
+
+Sources:
+
+- https://github.com/ggml-org/whisper.cpp
+- https://github.com/argmaxinc/WhisperKit
+- https://github.com/SYSTRAN/faster-whisper
+
+Статус: активное research-направление для `P0-005` и `P0-010`.
+
+Что найдено локально:
+
+- Handy хранит `ggml-large-v3-q5_0.bin`, совместимый по формату с `whisper.cpp`.
+- Whisper Transcription/MacWhisper хранит CoreML WhisperKit models:
+  - `openai_whisper-large-v3-v20240930`;
+  - `openai_whisper-small`.
+- CLI `whisper.cpp`/`whisper-cli` пока не установлен в PATH.
+
+Что это значит для нас:
+
+- `whisper.cpp` - самый прямой путь проверить Handy Whisper Large v3 без обращения к приватному Handy runtime.
+- WhisperKit - самый прямой путь проверить CoreML-модель, уже скачанную MacWhisper, но продуктово лучше использовать открытый Argmax runtime/CLI, а не MacWhisper runner bundles.
+- `faster-whisper` полезен как переносимый Python/CTranslate2 профиль, но он не переиспользует найденные `ggml`/CoreML файлы напрямую; его стоит подключать только после решения по downloads/model manager.
+
+Что берем:
+
+- разделение engine profile и model asset: один UI-профиль должен показывать runtime, model path, status and next step;
+- benchmark-first workflow: сначала экспорт кандидата в `.local-quality/candidates/`, затем `benchmark-quality --candidate`;
+- runtime-specific names вместо общего "Whisper": `whispercpp-handy`, `macwhisper-whisperkit`, `faster-whisper`.
+
+Что не берем:
+
+- приватные bundles из `/Applications/Whisper Transcription.app/Contents/Resources`;
+- прямую зависимость от GUI-приложения MacWhisper;
+- автоматическую отправку аудио в OpenAI/Groq/Deepgram runners, даже если они есть в app bundle.
+
+Следующий gate:
+
+1. Получить один MacWhisper export для `Носников` и сравнить его с Speech2Text/GigaSTT через текущий `benchmark-quality`.
+2. Если MacWhisper выигрывает хотя бы на проблемных фрагментах, добавить WhisperKit profile в engine registry как `missing-runtime`/`ready` по фактической установке.
+3. Отдельно решить, ставим ли `whisper.cpp` для Handy `ggml` и делаем второй кандидатный прогон.
+
 ## Speech2Text.ru
 
 Source: https://speech2text.ru/

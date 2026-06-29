@@ -58,6 +58,42 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-005 Local Whisper Candidate Research
+
+Status: DELIVERED (2026-06-29). Local Whisper inventory and benchmark route.
+
+Scope:
+
+- `docs/local-models.md`
+- `docs/external-projects.md`
+- `docs/transcript-quality-repair.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User noted that a local Whisper app is also available and asked to include it in the research/comparison list.
+
+What changed:
+
+- Inventoried `/Applications/Whisper Transcription.app` / MacWhisper 13.15 and its local WhisperKit CoreML models.
+- Confirmed MacWhisper has `openai_whisper-large-v3-v20240930` and `openai_whisper-small` under its container data.
+- Kept MacWhisper as a candidate/export source, not as a private runtime dependency.
+- Documented Handy `ggml-large-v3-q5_0.bin` as a separate `whisper.cpp` candidate.
+- Added benchmark slots for `macwhisper-whisperkit` and `whispercpp-handy` in the private `.local-quality/candidates/` flow.
+- Updated backlog so `P0-005` and `P0-010` distinguish WhisperKit/CoreML, whisper.cpp/ggml and faster-whisper/CTranslate2 instead of one generic "Whisper".
+
+Checks:
+
+- `git diff --check`;
+- `.venv/bin/python -m compileall app/src`;
+- secret scan over `docs .agents` found no real HF/OpenAI tokens.
+
+Notes:
+
+- No model files, audio, transcripts or private candidate outputs were copied into the repo.
+- `whisper-cli`/`whisper-cpp` is not installed in PATH yet, so the next implementation step is either MacWhisper export benchmarking or installing/building a clean `whisper.cpp` runtime after user approval.
+
 ### Codex - P0-010 ASR Candidate Benchmark Harness
 
 Status: DELIVERED (2026-06-29). Multi-ASR candidate scoring groundwork.

@@ -32,7 +32,7 @@ Self-host, публичный GitHub, внешний лендинг и SwiftUI/n
 - Long-file story закрыта для ASR chunking, но не закрыта как полноценный resume/progress pipeline по этапам и chunks.
 - Batch UX есть, но нуждается в надежной job persistence, resume и итоговом отчете по пачке.
 - Есть мелкие UX-замечания из spouse-Mac теста: поле `Имена спикеров` в настройках запуска преждевременно, верхний workflow stepper выглядит как шум.
-- Выбор движков в UI пока по сути один рабочий backend: GigaSTT/GigaAM v3. Whisper/Handy/Wisper/LM Studio не интегрированы как реальные engine profiles.
+- Выбор движков в UI пока по сути один рабочий backend: GigaSTT/GigaAM v3. Whisper/Handy/Wisper/LM Studio не интегрированы как реальные engine profiles; local Whisper inventory уже описывает MacWhisper/WhisperKit и Handy `ggml` как отдельных кандидатов.
 - Итоговый текст иногда теряет смысл из-за ASR-ошибок, плохой пунктуации/регистра, склеек слов и разрывов одной фразы между спикерами; диагностика есть, но semantic repair и сравнение raw/edited результата не реализованы.
 - Диаризация получила диагностику, но не получила системный quality-improvement loop: сравнение конфигураций, улучшение speaker-islands, overlap/uncertain regions и приемочный benchmark.
 - Speaker labeling работает в рамках результата, но speaker memory / повторное узнавание людей по голосу отложено.
@@ -176,6 +176,7 @@ Acceptance:
 - Delivered first UI slice: Text preview and primary Markdown link prefer edited exports; raw/clean files remain available in the Files tab.
 - Delivered benchmark slice: `benchmark-quality` can compare selected problematic snippets against private reference text under ignored `.local-quality/` without committing transcripts, audio or outputs.
 - Delivered candidate benchmark slice: `benchmark-quality --candidate name=path` can score local `.txt`, `.md` and `.docx` outputs from Speech2Text/FluidAudio/FunASR/WhisperX before any ensemble merge is attempted.
+- Delivered research slice: MacWhisper/WhisperKit and Handy/whisper.cpp are documented as separate local Whisper candidates for the same benchmark loop.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 
 ### P0-008 Installable Layout And Update-Safe Data Split
@@ -304,6 +305,7 @@ Acceptance:
 - GigaSTT/GigaAM v3 остается default.
 - Whisper local profile выбран как следующий candidate или явно отложен с причиной.
 - Handy/Wisper/LM Studio assets описаны как reusable/not reusable без догадок.
+- Delivered research slice: Handy `ggml-large-v3-q5_0.bin` maps to future `whispercpp-handy`; MacWhisper `openai_whisper-large-v3-v20240930` maps to future `macwhisper-whisperkit`; `faster-whisper` requires separate CTranslate2 model download/convert.
 
 ### P0-006 Speaker Quality Improvement Loop
 
