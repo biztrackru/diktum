@@ -158,14 +158,14 @@ mkdir -p .local-quality/candidates
 
 # Put private outputs from Speech2Text, FluidAudio, MacWhisper, whisper.cpp,
 # FunASR, WhisperX, etc. here.
-# Candidate files may be .txt, .md, .docx, or timestamped lines.
+# Candidate files may be .txt, .md, .docx, .srt, .vtt, or timestamped lines.
 PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality \
   "outputs/pipeline/Носников_дапринт_+_нфло.manifest.json" \
   --references .local-quality/references \
   --candidate speech2text=.local-quality/candidates/nosnikov-speech2text.txt \
   --candidate parakeet=.local-quality/candidates/nosnikov-parakeet.txt \
   --candidate macwhisper-whisperkit=.local-quality/candidates/nosnikov-macwhisper-whisperkit.txt \
-  --candidate whispercpp-handy=.local-quality/candidates/nosnikov-whispercpp-handy.txt \
+  --candidate whispercpp-handy=.local-quality/candidates/nosnikov-whispercpp-handy.srt \
   --output .local-quality/reports/nosnikov-asr-candidates.json
 ```
 
@@ -176,9 +176,18 @@ Candidate outputs are a measurement step, not an automatic merge. Full transcrip
 Local Whisper candidates are intentionally split into separate names:
 
 - `macwhisper-whisperkit` - exported text from Whisper Transcription/MacWhisper using its local WhisperKit CoreML model.
-- `whispercpp-handy` - text produced by a clean `whisper.cpp` runtime using Handy's local `ggml-large-v3-q5_0.bin`.
+- `whispercpp-handy` - text produced by a clean `whisper.cpp` runtime using Handy's local `ggml-large-v3-q5_0.bin`; prefer `.srt`/`.vtt` exports for fair windowed scoring.
 
 Do not compare them as one generic "Whisper" result: the model format, runtime, speed and punctuation behavior can differ enough to matter.
+
+First local `whisper.cpp` finding on `Носников`:
+
+- Runtime: Homebrew `whisper-cpp 1.9.1`, `ggml 0.15.3`, `libomp 22.1.8`.
+- Model: Handy `ggml-large-v3-q5_0.bin`.
+- Window: first 120 seconds, covering the external reference snippet.
+- Performance: about 248 seconds for 120 seconds of audio on the installed CPU/BLAS build; no GPU/Metal backend was available in that build.
+- Score with SRT timestamps: candidate token F1 `0.511`; current edited GigaSTT export token F1 `0.638`; winner `edited`.
+- Practical conclusion: this exact `whisper.cpp` + Handy model path is useful as a fallback/candidate, but not yet a quality upgrade for the `Носников` problem. Next Whisper path should be MacWhisper/WhisperKit export or a native Apple Silicon Metal/CoreML runtime.
 
 ## First Implementation Slice
 
@@ -187,8 +196,10 @@ Do not compare them as one generic "Whisper" result: the model format, runtime, 
 3. Done: add edited export generation for punctuation/casing repair with a deterministic local rule-based baseline.
 4. Done: add `benchmark-quality` for private local reference snippets in ignored `.local-quality/`.
 5. Done: extend `benchmark-quality` with `--candidate name=path` so alternative ASR outputs can be compared before designing an ensemble merge.
-6. Add local Whisper candidate runs to the private benchmark: MacWhisper export first, then `whisper.cpp` with Handy's `ggml` model if we install/build the runtime.
-7. Add optional LM Studio repair profile behind explicit config.
-8. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
+6. Done: add `.srt` and `.vtt` candidate loading so Whisper/Subtitle exports can be scored by reference timestamps.
+7. Done first local Whisper run: `whisper.cpp` + Handy `ggml-large-v3-q5_0.bin` benchmarked on the first `Носников` reference window; it did not beat the current edited GigaSTT output.
+8. Add MacWhisper/WhisperKit export benchmark as the next Whisper candidate.
+9. Add optional LM Studio repair profile behind explicit config.
+10. Done for the first UI slice: `process` writes edited exports, the Text tab prefers `*.edited.md` / `*.edited.txt`, file links label edited artifacts as primary results, and applying speaker names rewrites edited exports.
 
 This order gives us a safe baseline before asking a neural model to rewrite anything.

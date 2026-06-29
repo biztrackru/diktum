@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `gigastt-gigaam-v3` | работает | Текущий основной ASR: GigaSTT с GigaAM v3 RNNT из `.models/gigastt`. |
 | `handy-gigaam-v3` | кандидат | Handy-модель найдена, но это single-file ONNX, не совместимый напрямую с GigaSTT split RNNT files. |
-| `handy-whispercpp-large-v3-q5_0` | кандидат | Handy Whisper Large v3 найден в формате `ggml`; чистый runtime - `whisper.cpp`, локального `whisper-cli` пока нет в PATH. |
+| `handy-whispercpp-large-v3-q5_0` | кандидат | Handy Whisper Large v3 найден в формате `ggml`; чистый runtime `whisper.cpp 1.9.1` установлен через Homebrew, но текущая сборка работает CPU/BLAS без Metal/GPU. |
 | `macwhisper-whisperkit-large-v3-v20240930` | кандидат | Whisper Transcription/MacWhisper скачал CoreML WhisperKit large-v3-v20240930; чистый runtime - Argmax WhisperKit/CLI, не приватные app bundles. |
 | `faster-whisper-large-v3` | кандидат/отложен | Переносимый Python/CTranslate2 путь, но найденные локальные `ggml`/CoreML модели напрямую не переиспользует; нужен отдельный download/convert. |
 | `fluidaudio-parakeet-v3` | кандидат | WhyNote использует FluidAudio Parakeet TDT 0.6B v3 CoreML; модель найдена локально, нужен чистый runtime через FluidAudio/SwiftPM или экспорт кандидата. |
@@ -27,7 +27,9 @@ Directory: `~/Library/Application Support/com.pais.handy/models`
 Вывод:
 
 - Whisper `.bin` можно потенциально использовать через `whisper.cpp`.
-- На этой машине `whisper-cli`/`whisper-cpp` не найдены в PATH, поэтому сначала нужен runtime: Homebrew package или сборка `ggml-org/whisper.cpp`.
+- На этой машине установлен `whisper-cpp 1.9.1` из Homebrew: `/usr/local/bin/whisper-cli`, `ggml 0.15.3`, `libomp 22.1.8`.
+- Фактический smoke на первых 120 секундах `Носников`: модель загрузилась как `large v3`, но backend сообщил `no GPU found` и работал через CPU/BLAS. 120 секунд аудио заняли около 248 секунд.
+- По private benchmark reference `Носников` SRT-кандидат `whispercpp-handy` получил token F1 `0.511` против текущего edited GigaSTT `0.638`; победил `edited`.
 - Для benchmark не нужно копировать модель в git: runtime может читать файл read-only или мы можем положить symlink/copy в ignored `.models/whisper/`.
 - GigaAM ONNX из Handy пока не подключен: `gigastt` ожидает другой набор файлов (`encoder/decoder/joint/vocab`) и не принимает этот single-file ONNX напрямую.
 - Нельзя безопасно писать временные файлы в папку Handy; свои модели держим в `.models/`.
@@ -125,7 +127,9 @@ Bundle id: `com.goodsnooze.MacWhisper`, observed version `13.15`.
 
 2. `whisper.cpp` route for Handy `ggml-large-v3-q5_0.bin`.
 
-   Установить/собрать `whisper.cpp`, прогнать тот же аудиофайл, сохранить `.txt`/`.srt` в `.local-quality/candidates/` и сравнить тем же `benchmark-quality`.
+   Done first slice: Homebrew `whisper-cpp 1.9.1` installed, first 120 seconds of `Носников` transcribed to ignored `.local-quality/candidates/`, SRT benchmark scored. Current result is not a quality upgrade and is too slow on this CPU/BLAS build for long files.
+
+   Next useful variant is not another full CPU run, but a native Apple Silicon path: Metal-enabled `whisper.cpp`, WhisperKit/CoreML export, or MLX/Faster-Whisper profile if we choose a separate model download.
 
 3. Engine registry route.
 

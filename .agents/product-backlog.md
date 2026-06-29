@@ -175,8 +175,9 @@ Acceptance:
 - Delivered first slice: UI result file links include sibling `*.repair.json`, `*.edited.md` and `*.edited.txt` when they exist.
 - Delivered first UI slice: Text preview and primary Markdown link prefer edited exports; raw/clean files remain available in the Files tab.
 - Delivered benchmark slice: `benchmark-quality` can compare selected problematic snippets against private reference text under ignored `.local-quality/` without committing transcripts, audio or outputs.
-- Delivered candidate benchmark slice: `benchmark-quality --candidate name=path` can score local `.txt`, `.md` and `.docx` outputs from Speech2Text/FluidAudio/FunASR/WhisperX before any ensemble merge is attempted.
+- Delivered candidate benchmark slice: `benchmark-quality --candidate name=path` can score local `.txt`, `.md`, `.docx`, `.srt` and `.vtt` outputs from Speech2Text/FluidAudio/FunASR/WhisperX/Whisper before any ensemble merge is attempted.
 - Delivered research slice: MacWhisper/WhisperKit and Handy/whisper.cpp are documented as separate local Whisper candidates for the same benchmark loop.
+- Delivered first Whisper experiment: Homebrew `whisper.cpp 1.9.1` with Handy `ggml-large-v3-q5_0.bin` ran on the first `Носников` reference window; CPU/BLAS build was slow and scored below current edited GigaSTT.
 - Documentation explains when to rerun ASR with shorter chunks/alternate engine versus when to use text repair.
 
 ### P0-008 Installable Layout And Update-Safe Data Split
@@ -306,6 +307,7 @@ Acceptance:
 - Whisper local profile выбран как следующий candidate или явно отложен с причиной.
 - Handy/Wisper/LM Studio assets описаны как reusable/not reusable без догадок.
 - Delivered research slice: Handy `ggml-large-v3-q5_0.bin` maps to future `whispercpp-handy`; MacWhisper `openai_whisper-large-v3-v20240930` maps to future `macwhisper-whisperkit`; `faster-whisper` requires separate CTranslate2 model download/convert.
+- Delivered first runtime slice: `whisper-cli` is installed, but `whispercpp-handy` should not be default because the current Homebrew build has no GPU/Metal and did not improve the `Носников` quality benchmark.
 
 ### P0-006 Speaker Quality Improvement Loop
 

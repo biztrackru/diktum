@@ -24,7 +24,7 @@ _SPACE_RE = re.compile(r"\s+")
 _LOOSE_SOURCE_RE = re.compile(r"[^0-9A-Za-zА-Яа-яЁё]+")
 _TIMESTAMP_RE = re.compile(r"(?<!\d)(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)(?!\d)")
 _TIMESTAMP_INTERVAL_RE = re.compile(
-    r"(?<!\d)(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*[-–—]\s*"
+    r"(?<!\d)(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)\s*(?:-->|[-–—])\s*"
     r"(\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?)(?!\d)"
 )
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
@@ -508,8 +508,11 @@ def _parse_candidate_spec(spec: str) -> tuple[str | None, Path]:
 
 
 def _read_candidate_text(path: Path) -> str:
-    if path.suffix.lower() == ".docx":
+    suffix = path.suffix.lower()
+    if suffix == ".docx":
         return _read_docx_text(path)
+    if suffix in {".srt", ".vtt"}:
+        return _read_subtitle_text(path)
     return path.read_text(encoding="utf-8")
 
 
@@ -539,6 +542,39 @@ def _read_docx_text(path: Path) -> str:
         if text:
             paragraphs.append(text)
     return "\n".join(paragraphs)
+
+
+def _read_subtitle_text(path: Path) -> str:
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    flattened: list[str] = []
+    block: list[str] = []
+
+    def flush_block() -> None:
+        if not block:
+            return
+        timing_index = next((index for index, line in enumerate(block) if "-->" in line), None)
+        if timing_index is None:
+            return
+        text_lines = [
+            line
+            for line in block[timing_index + 1 :]
+            if line and not line.isdigit()
+        ]
+        text = _strip_candidate_text("\n".join(text_lines))
+        if text:
+            flattened.append(f"{block[timing_index]} {text}")
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            flush_block()
+            block = []
+            continue
+        if line.upper() == "WEBVTT" or line.startswith(("NOTE", "STYLE", "REGION")):
+            continue
+        block.append(line)
+    flush_block()
+    return "\n".join(flattened)
 
 
 def _unique_candidate_name(base: str, used_names: set[str]) -> str:

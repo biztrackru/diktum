@@ -58,6 +58,47 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-010 Local Whisper Candidate Benchmark Run
+
+Status: DELIVERED (2026-06-29). First real Handy/whisper.cpp quality run.
+
+Scope:
+
+- `app/src/voice_recognizer/transcript_repair.py`
+- `tests/test_transcript_repair.py`
+- `docs/transcript-quality-repair.md`
+- `docs/local-models.md`
+- `.agents/product-backlog.md`
+- `.agents/task-board.md`
+- ignored `.local-quality/candidates/`
+- ignored `.local-quality/reports/`
+
+Trigger:
+
+- User asked to move forward after local Whisper inventory and include local Whisper in actual comparison work.
+
+What changed:
+
+- Installed clean Homebrew `whisper-cpp 1.9.1` runtime with `ggml 0.15.3` and `libomp 22.1.8`.
+- Ran Handy `ggml-large-v3-q5_0.bin` through `whisper-cli` on the first 120 seconds of `Носников`.
+- Wrote private candidate outputs under ignored `.local-quality/candidates/`.
+- Added `.srt` and `.vtt` candidate loading to `benchmark-quality`, so Whisper/MacWhisper/Speech2Text subtitle exports can be scored by timestamp windows.
+- Added synthetic SRT candidate coverage to transcript repair tests.
+- Documented the first result: current Homebrew whisper.cpp build used CPU/BLAS with no GPU/Metal, took about 248 seconds for 120 seconds of audio, and scored below current edited GigaSTT on the `Носников` reference.
+
+Checks:
+
+- `whisper-cli --version` -> `whisper.cpp version: 1.9.1`;
+- `PYTHONPATH=app/src .venv/bin/python tests/test_transcript_repair.py` passed 10/10;
+- `.venv/bin/python -m compileall app/src`;
+- `PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.cli benchmark-quality outputs/pipeline/Носников_дапринт_+_нфло.manifest.json --references .local-quality/references --candidate whispercpp-handy-first2min-srt=.local-quality/candidates/nosnikov-whispercpp-handy-first2min.srt --output .local-quality/reports/nosnikov-whispercpp-handy-first2min-srt.json`;
+- private benchmark result: raw token F1 `0.606`, edited token F1 `0.638`, `whispercpp-handy-first2min-srt` token F1 `0.511`, winner `edited`.
+
+Notes:
+
+- No model files, audio, transcripts or private benchmark reports were staged or committed.
+- Next useful Whisper experiment is MacWhisper/WhisperKit export or a native Apple Silicon Metal/CoreML/MLX path, not a full long-file CPU whisper.cpp run.
+
 ### Codex - P0-005 Local Whisper Candidate Research
 
 Status: DELIVERED (2026-06-29). Local Whisper inventory and benchmark route.

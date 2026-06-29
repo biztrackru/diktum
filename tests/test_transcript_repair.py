@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app" / "src"))
 
 from voice_recognizer.gigastt import GigasttSegment  # noqa: E402
 from voice_recognizer.transcript_repair import (  # noqa: E402
+    QualityReference,
     build_quality_benchmark_report,
     detect_suspicious_spans,
     load_quality_candidates,
@@ -198,6 +199,51 @@ def test_quality_candidate_loader_reads_docx_exports() -> None:
         assert candidates[0].timed is True
         assert candidates[0].segments[0].start == 8.0
         assert candidates[0].segments[0].text == "Компания НФЛО демонстрирует сильные стандарты сервиса."
+
+
+def test_quality_candidate_loader_reads_srt_exports() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        srt_path = root / "candidate.srt"
+        srt_path.write_text(
+            """1
+00:00:08,000 --> 00:00:15,000
+Компания НФЛО демонстрирует сильные стандарты сервиса.
+
+2
+00:00:20,000 --> 00:00:24,000
+Лишняя фраза вне окна.
+""",
+            encoding="utf-8",
+        )
+
+        candidates = load_quality_candidates([f"srt={srt_path}"])
+        report = build_quality_benchmark_report(
+            manifest_path=root / "candidate.manifest.json",
+            source_name="candidate.m4a",
+            references=[
+                QualityReference(
+                    id="candidate-000",
+                    source="candidate.m4a",
+                    start=8.0,
+                    end=15.0,
+                    reference="Компания НФЛО демонстрирует сильные стандарты сервиса.",
+                    terms=["НФЛО"],
+                    notes=None,
+                    path=str(srt_path),
+                )
+            ],
+            raw_segments=[],
+            edited_segments=[],
+            candidates=candidates,
+        )
+
+        entry = report["entries"][0]
+        assert candidates[0].timed is True
+        assert candidates[0].segments[0].start == 8.0
+        assert candidates[0].segments[0].end == 15.0
+        assert entry["winner"] == "candidate:srt"
+        assert "Лишняя фраза" not in entry["texts"]["candidates"]["srt"]
 
 
 def test_rewrite_manifest_exports_updates_edited_speaker_names_without_rerun() -> None:
