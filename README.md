@@ -161,7 +161,6 @@ cp app/config/hotwords.example.txt app/config/hotwords.txt
 - [User scenarios](docs/user-scenarios.md)
 - [Architecture](docs/architecture.md)
 - [Setup secrets](docs/setup-secrets.md)
-- [Product site materials](docs/site/README.md)
 - [Security policy](SECURITY.md)
 
 ## Для разработчиков

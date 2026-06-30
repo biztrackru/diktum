@@ -30,10 +30,11 @@ docs/*.md
 !docs/product-requirements.md
 !docs/setup-secrets.md
 !docs/user-scenarios.md
+docs/site/
 docs/asr-benchmark/
 docs/ux/
 
-# Raw designer handoff; cleaned integrated copies live in docs/site/.
+# Raw designer handoff and site/promo drafts are local-only until published separately.
 design_promo_pack/
 
 # Local ASR vocabulary. Commit only the example file.
