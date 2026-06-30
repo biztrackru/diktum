@@ -1,7 +1,8 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { FormEvent, useMemo, useState } from "react";
-import Image from "next/image";
 
 type Lang = "ru" | "en";
 type SubmitState = "idle" | "submitting" | "success" | "error";
@@ -472,8 +473,8 @@ export default function DiktumLanding() {
           ))}
         </div>
         <div className="product-visuals">
-          <Image src="/screenshots/install.jpg" width={924} height={540} alt="Диктум setup screen" />
-          <Image src="/screenshots/modal.jpg" width={924} height={540} alt="Диктум speaker naming screen" />
+          <img src="/screenshots/install.jpg" alt="Диктум setup screen" />
+          <img src="/screenshots/modal.jpg" alt="Диктум speaker naming screen" />
         </div>
         <div className="install-grid">
           {t.installCards.map(([title, text]) => (
