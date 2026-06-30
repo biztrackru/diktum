@@ -26,6 +26,6 @@ flowchart TD
 
 ## Near-Term Backends
 
-- ASR: current backend is `gigastt-gigaam-v3`; next candidates are Handy GigaAM V3 and Handy Whisper Large v3 once their runtimes are integrated.
+- ASR: current backend is `gigastt-gigaam-v3`; future candidates should be added only after a reproducible benchmark shows a real quality or portability gain.
 - Diarization: pyannote Community-1 first, then SpeakerKit/Core ML if pyannote is too slow on Apple Silicon.
-- Baseline: whispermlx or installed Whisper Large V3 Turbo for comparison.
+- Baseline comparisons should use sanitized local fixtures or private ignored benchmark data.

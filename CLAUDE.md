@@ -2,80 +2,34 @@
 
 Read this file first when working on Диктум.
 
-## One sentence mission
+## Mission
 
 Build a private local macOS transcription product that a normal Mac user can install and run without developer help.
 
 ## Must-read files
 
 - `AGENTS.md` - shared agent rules and safety constraints.
-- `.agents/task-board.md` - current task ownership and handoff rules.
+- `README.md` - public product and setup overview.
 - `docs/product-requirements.md` - product requirements.
-- `docs/implementation-plan.md` - current staged plan.
-- `docs/local-mac-product-plan.md` - local installer/product direction.
+- `docs/architecture.md` - pipeline shape.
+- `docs/user-scenarios.md` - core user workflows.
 
-## Current focus
-
-Do not prioritize Docker, cloud, public GitHub packaging, or a marketing landing page yet.
-
-Focus on:
-
-- private trial distribution readiness;
-- local Mac setup;
-- one-click launch/stop;
-- model/runtime setup diagnostics;
-- file upload and batch processing;
-- long file reliability;
-- speaker naming and export UX.
-
-Do not start new ASR engine research or UI work for alternate model profiles before private trial feedback. Current trial baseline is `gigastt-gigaam-v3` with edited exports.
+If a local `.agents/` directory exists, use it for local task ownership and handoffs. It is intentionally not published.
 
 ## Boundaries
 
 Do not commit or read aloud secrets from `.env`.
-Do not commit audio files, generated outputs, model files, caches, or user documents.
-Do not modify `Inbox/`, `inbox/`, `outputs/`, `.cache/`, `.models/`, `.venv/` unless the task explicitly asks for runtime testing.
+Do not commit audio files, generated outputs, model files, caches, local benchmark references, or user documents.
+Do not modify `Inbox/`, `inbox/`, `outputs/`, `.cache/`, `.models/`, `.venv/`, `.dist/` unless the task explicitly asks for runtime testing.
 
 If you need to run a test that creates files there, clean up only the files you created.
-
-## Coordination
-
-Before editing, check:
-
-```bash
-git status --short --branch
-```
-
-If another agent has uncommitted changes in the same files, stop and ask for coordination.
-
-Use a clear write scope in your task. Good examples:
-
-- only `app/src/voice_recognizer/web.py`;
-- only `app/scripts/setup_local_mac.sh` and docs;
-- only `.agents/` docs.
-
-Bad examples:
-
-- "clean up the project";
-- "improve the UI" without file ownership;
-- broad formatting across unrelated files.
-
-## Review style
-
-When asked for review, answer with findings first:
-
-- severity;
-- file and line;
-- concrete risk;
-- suggested fix.
-
-If no critical issues are found, say so directly and list remaining risks.
 
 ## Useful commands
 
 ```bash
 .venv/bin/python -m compileall app/src
 zsh -n app/scripts/start_server.sh app/scripts/stop_server.sh app/scripts/setup_gigastt.sh
+app/scripts/smoke_local.sh
 git status --short --ignored
 ```
 

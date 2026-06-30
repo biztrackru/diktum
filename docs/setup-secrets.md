@@ -10,7 +10,7 @@ ASR и web UI можно установить без него, но speaker diar
 3. Принять условия доступа к модели или отправить запрос на доступ, если Hugging Face показывает gated access.
 4. Создать токен на https://huggingface.co/settings/tokens.
 5. Достаточно токена с read-доступом.
-6. Для семейного или внешнего теста лучше создать отдельный read-only token, например `voice-recognizer-family-test`.
+6. Для внешнего теста лучше создать отдельный read-only token, например `dictum-test`.
 7. Передавать token отдельно от install pack и не вкладывать его в zip, README, чат, screenshots или issue.
 8. Создать локальный файл `.env` из `app/.env.example`.
 9. Вписать токен в `.env`:

@@ -184,7 +184,9 @@ copy_file "app/pyproject.toml" "$PACK_DIR/app/pyproject.toml"
 copy_file "app/.env.example" "$PACK_DIR/app/.env.example"
 copy_dir "app/src" "$PACK_DIR/app/src"
 copy_dir "app/scripts" "$PACK_DIR/app/scripts"
-copy_dir "app/config" "$PACK_DIR/app/config"
+mkdir -p "$PACK_DIR/app/config"
+copy_file "app/config/speaker-counts.example.json" "$PACK_DIR/app/config/speaker-counts.json"
+copy_file "app/config/hotwords.example.txt" "$PACK_DIR/app/config/hotwords.example.txt"
 
 mkdir -p "$PACK_DIR/Inbox" "$PACK_DIR/outputs"
 write_start_here

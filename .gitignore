@@ -21,8 +21,28 @@ __pycache__/
 !docs/**/*.docx
 ~$*.docx
 
+# Local agent coordination and private research notes.
+.agents/
+references/
+docs/*.md
+!docs/README.md
+!docs/architecture.md
+!docs/product-requirements.md
+!docs/setup-secrets.md
+!docs/user-scenarios.md
+docs/asr-benchmark/
+docs/ux/
+
 # Raw designer handoff; cleaned integrated copies live in docs/site/.
 design_promo_pack/
+
+# Local ASR vocabulary. Commit only the example file.
+app/config/hotwords.txt
+!app/config/hotwords.example.txt
+
+# Local per-file speaker hints. Commit only the example file.
+app/config/speaker-counts.json
+!app/config/speaker-counts.example.json
 
 # Local audio corpus and generated media
 Inbox/

@@ -62,7 +62,7 @@ for file in "${shell_files[@]}"; do
 done
 
 section "Python compile"
-run "$PYTHON" -m compileall -q app/src tests docs/asr-benchmark/score.py
+run "$PYTHON" -m compileall -q app/src tests
 
 section "CLI help"
 run_quiet "$PYTHON" -m voice_recognizer.cli --help

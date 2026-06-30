@@ -2,20 +2,18 @@
 
 Дата: 2026-06-30.
 
-Этот файл обязателен для Codex, Claude Code и любых других AI-агентов, работающих в этом репозитории.
+Этот файл предназначен для AI-агентов и разработчиков, работающих в репозитории Диктум.
 
 ## Цель продукта
 
 Диктум - приватный local-first продукт для macOS, который превращает длинные диктофонные записи в текст с разделением по спикерам.
 
-Ближайший ориентир качества: обычный пользователь Mac должен установить и запустить приложение локально без помощи разработчика. Self-host/server profile отложен до этапа перед публичной публикацией.
-
-Ключевые продуктовые требования:
+Ключевые требования:
 
 - локально и приватно по умолчанию;
 - без обязательных регулярных платежей;
 - обычные аудиофайлы с телефонов, диктофонов и петличек;
-- выбор локальных AI/ASR моделей, включая сильные русскоязычные модели;
+- выбор локальных AI/ASR моделей, если они дают доказуемый выигрыш;
 - пакетная обработка;
 - практическое отсутствие лимита длины файла за счет chunking/resume;
 - понятный web UI или desktop launcher для не-технического пользователя.
@@ -23,14 +21,12 @@
 ## Структура проекта
 
 - `app/src/voice_recognizer/` - код приложения и pipeline.
-- `app/scripts/` - запуск, остановка и установка runtime/model helpers.
-- `app/config/` - примерные/проектные конфиги. Персональные конфиги должны быть local-only.
-- `docs/` - документация продукта, архитектуры и исследований.
-- `.agents/` - координация AI-агентов, task board, промпты, приемка.
+- `app/scripts/` - запуск, остановка, setup и packaging helpers.
+- `app/config/` - публичные example/default configs. Персональные configs должны быть local-only.
+- `docs/` - публичная документация продукта.
+- `.agents/` - локальная папка координации AI-агентов. Она может существовать в рабочей копии, но не публикуется в GitHub.
 - `Inbox/` и `inbox/` - локальные пользовательские аудиофайлы, не коммитить.
-- `outputs/`, `.cache/`, `.models/`, `.venv/` - runtime/generated/local-only, не коммитить.
-
-Приложение уже перенесено в `app/`. Корень репозитория остается рабочей зоной проекта и местом для локальных пользовательских данных (`inbox/`, `outputs/`, `.models/`, `.cache/`, `.venv`, `.env`).
+- `outputs/`, `.cache/`, `.models/`, `.venv/`, `.dist/`, `logs/` - runtime/generated/local-only, не коммитить.
 
 Публичное имя продукта: `Диктум`. Технические идентификаторы `voice_recognizer`, `voice-recognizer` и `VOICE_RECOGNIZER_*` пока сохраняются для совместимости; не переименовывать Python-пакет/модуль без отдельной миграционной задачи.
 
@@ -42,6 +38,7 @@
 - аудиозаписи пользователя;
 - generated transcripts, speaker samples, cache, model files;
 - приватные `.docx`/черновики из корня;
+- локальные benchmark references/candidates;
 - абсолютные пути к личным данным, если они не нужны для локального запуска.
 
 Перед коммитом проверить:
@@ -54,79 +51,16 @@ git diff --cached | rg --pcre2 -n "hf_(?!your_token_here)[A-Za-z0-9]{12,}|sk-[A-
 
 Код не должен отправлять аудио, текст или токены во внешние сервисы без явного пользовательского выбора.
 
-## Git workflow
+## Workflow
 
-- `main` - локальный стабильный baseline.
-- Новые работы делать в ветках `codex/<topic>`, `claude/<topic>` или `agent/<topic>`.
-- Не работать нескольким агентам над одним файлом без явного ownership.
-- Не делать большие рефакторы вместе с продуктовыми изменениями.
-- Не откатывать чужие изменения.
-- Перед коммитом перечислить, что изменено и что проверено.
+- Предпочитайте маленькие тематические изменения.
+- Не откатывайте чужие изменения без явного запроса.
+- Не смешивайте рефакторинг с продуктовой правкой.
+- Перед изменениями проверьте `git status --short --ignored`.
+- Если в локальной копии есть `.agents/task-board.md`, используйте его для claim/delivery journal.
+- Если `.agents/` отсутствует, работайте по обычному GitHub workflow: issue/branch/PR/checks.
 
-Если агент не уверен, что его задача конфликтует с другой, он должен остановиться и записать вопрос в `.agents/task-board.md`, а не переписывать соседний код.
-
-## Task accounting workflow
-
-Источник правды по следующим задачам: `.agents/product-backlog.md`.
-
-`.agents/task-board.md` используется как:
-
-- журнал доставленных delivery-блоков;
-- место для активного claim;
-- место для вопросов/блокеров между агентами.
-
-Перед любой нетривиальной работой агент обязан:
-
-1. Прочитать `.agents/product-backlog.md` и `.agents/task-board.md`.
-2. Выбрать один task ID из backlog, например `P0-002 Durable Job Queue`.
-3. Добавить или обновить active claim в `.agents/task-board.md`: агент, task ID, scope, файлы, acceptance, время.
-4. Работать только в заявленном scope. Если нужен новый scope, сначала обновить claim.
-5. В конце добавить delivery block в `.agents/task-board.md`: что сделано, какие файлы, какие проверки, что не проверено, риски.
-6. Если задача завершена, обновить статус в `.agents/product-backlog.md` или явно записать, почему осталась `READY/BLOCKED`.
-
-Запрещено:
-
-- брать "мелкую удобную" задачу, если она не двигает текущий P0 backlog или пользователь явно не попросил;
-- оставлять claim в состоянии active после коммита;
-- смешивать разные P0 задачи в одном diff без необходимости;
-- делать крупный кодовый refactor под видом task accounting.
-
-## Роли
-
-### Implementation agent
-
-Пишет код и тесты в заранее выбранном scope. Обязан проверять запуск/compile и не оставлять тестовые серверы в фоне.
-
-### UX/product agent
-
-Пишет предложения и acceptance criteria. По умолчанию меняет только `docs/` или `.agents/`, не код.
-
-### Review agent
-
-Проверяет diff. Не исправляет код, если задача не просит. Ответ начинает с findings по серьезности.
-
-## Приоритеты ближайших задач
-
-Актуальный порядок находится в `.agents/product-backlog.md`.
-
-Текущий operational order:
-
-1. `P0-008 Installable Layout And Update-Safe Data Split` / private trial distribution readiness.
-2. `P0-003 Long-File Resume And Progress` only if trial feedback or release acceptance exposes a blocker.
-3. `P0-004 Batch Reliability` only if trial feedback or release acceptance exposes a blocker.
-4. `P0-009 Release Channel And Manual Updater` after the first private trial artifact is stable.
-5. `P0-006 Speaker Quality Improvement Loop` after real-user feedback identifies speaker quality as the main blocker.
-6. `P0-010 Transcript Quality Repair And Postprocessing` after real-user feedback identifies text quality as the main blocker.
-7. `P0-005 Engine Registry And Model Profiles` deferred until an alternate engine beats the current baseline or users clearly need backend choice.
-
-`P0-001 Mac Install Acceptance` delivered for the private trial; only regressions/packaging polish should be tracked there.
-`P0-007 Local Smoke Suite` delivered; run `app/scripts/smoke_local.sh` before release/trial-pack steps and meaningful code changes.
-
-Current release decision: stop active ASR-model exploration for the private trial. Ship the strongest current baseline (`gigastt-gigaam-v3` plus edited exports), collect feedback from real users, then choose the next quality or reliability investment from evidence.
-
-Self-host/Docker/Cloud отложены до отдельного будущего этапа.
-
-## Проверки
+## Checks
 
 Минимум для Python-изменений:
 
@@ -134,17 +68,18 @@ Self-host/Docker/Cloud отложены до отдельного будущег
 .venv/bin/python -m compileall app/src
 ```
 
-Для web UI изменений:
+Для scripts/launchers:
 
-- поднять локальный сервер на тестовом порту;
-- открыть страницу в браузере;
-- проверить console errors;
-- остановить сервер после проверки.
+```bash
+zsh -n app/scripts/*.sh *.command
+```
 
-Для launcher/setup изменений:
+Для release/trial-pack изменений:
 
-- проверить `zsh -n app/scripts/*.sh`;
-- проверить сценарии: свободный порт, занятый порт, остановка сервера.
+```bash
+app/scripts/smoke_local.sh
+app/scripts/build_install_pack.sh
+```
 
 ## Definition of Done
 

@@ -358,7 +358,7 @@ print_hf_token_help() {
   echo "3. Примите условия доступа к модели pyannote под этим аккаунтом."
   echo "4. Создайте read-only token: https://huggingface.co/settings/tokens"
   echo
-  echo "Для семейного теста лучше создать отдельный read-only token, например"
+  echo "Для внешнего теста лучше создать отдельный read-only token, например"
   echo "dictum-family-test. Его можно передать отдельно от zip и"
   echo "потом отозвать в Hugging Face settings."
   echo
