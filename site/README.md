@@ -7,7 +7,7 @@ Sites-compatible лендинг Диктум, собранный из локал
 
 - `app/DiktumLanding.tsx` - клиентский лендинг с RU/EN переключателем и email-gate.
 - `app/api/leads/route.ts` - серверный прием email, Firestore upsert, optional webhook и возврат download URL.
-- `app/api/leads/export/route.ts` - CSV export до 500 последних лидов по секретному `LEADS_EXPORT_TOKEN`.
+- `app/api/leads/export/route.ts` - CSV export до 500 последних лидов по `Authorization: Bearer <LEADS_EXPORT_TOKEN>`.
 - `db/schema.ts` и `drizzle/` - legacy D1 schema для Sites-сборки.
 - `public/screenshots/` - очищенные скриншоты продукта из `docs/site/screenshots/`.
 

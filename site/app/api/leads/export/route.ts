@@ -13,9 +13,20 @@ function csvCell(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+function bearerToken(request: Request) {
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  const [scheme, ...parts] = authorization.split(/\s+/);
+
+  if (scheme.toLowerCase() !== "bearer") {
+    return "";
+  }
+
+  return parts.join(" ").trim();
+}
+
 export async function GET(request: Request) {
   const configuredToken = runtimeEnv().LEADS_EXPORT_TOKEN?.trim();
-  const requestToken = new URL(request.url).searchParams.get("token")?.trim();
+  const requestToken = bearerToken(request);
 
   if (!configuredToken || requestToken !== configuredToken) {
     return Response.json(
