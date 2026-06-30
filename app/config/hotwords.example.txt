@@ -1,0 +1,8 @@
+# Optional project-level ASR hotwords.
+#
+# Copy this file to app/config/hotwords.txt and add one phrase per line.
+# Keep the list short and domain-specific: too many generic words can bias
+# recognition in surprising ways.
+#
+# Example:
+# Диктум

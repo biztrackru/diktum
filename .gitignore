@@ -1,0 +1,59 @@
+.DS_Store
+.venv/
+.env
+.env.*
+!.env.example
+!app/.env.example
+.github/
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+SECURITY.md
+.cache/
+.dist/
+.models/
+logs/
+outputs/
+tools/bin/
+*.egg-info/
+__pycache__/
+*.py[cod]
+*$py.class
+tests/
+.agents/runs/
+.agents/tmp/
+.local-quality/
+*.docx
+!docs/**/*.docx
+~$*.docx
+
+# Local agent coordination and private research notes.
+.agents/
+references/
+docs/
+docs/site/
+docs/asr-benchmark/
+docs/ux/
+
+# Raw designer handoff and site/promo drafts are local-only until published separately.
+design_promo_pack/
+
+# Local ASR vocabulary. Commit only the example file.
+app/config/hotwords.txt
+!app/config/hotwords.example.txt
+
+# Local per-file speaker hints. Commit only the example file.
+app/config/speaker-counts.json
+!app/config/speaker-counts.example.json
+
+# Local/developer-only validation helper.
+app/scripts/smoke_local.sh
+
+# Local audio corpus and generated media
+Inbox/
+inbox/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg

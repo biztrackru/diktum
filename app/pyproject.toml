@@ -1,0 +1,39 @@
+[project]
+name = "voice-recognizer"
+version = "0.1.0"
+description = "Diktum: local Russian transcription and speaker diarization pipeline for long voice recordings."
+requires-python = ">=3.10,<3.14"
+# Dependencies are bounded with upper limits for reproducible, supply-chain-safe
+# installs. Prefer regenerating a full lock file (pip-tools/uv) before release.
+dependencies = [
+    "typer>=0.12,<1.0",
+    "rich>=13.7,<14.0",
+]
+
+[project.optional-dependencies]
+asr = [
+    # SECURITY: pin to a reviewed commit before distributing. An unpinned
+    # git dependency installs whatever is on the default branch at install
+    # time, which is a supply-chain risk. Replace <COMMIT_SHA> with a commit
+    # you have reviewed, e.g.:
+    #   "gigaam @ git+https://github.com/salute-developers/GigaAM.git@<COMMIT_SHA>"
+    "gigaam @ git+https://github.com/salute-developers/GigaAM.git",
+]
+diarization = [
+    "numpy>=1.26,<3.0",
+    "pyannote.audio>=4,<5",
+]
+docs = [
+    "python-docx>=1.1,<2.0",
+]
+
+[project.scripts]
+dictum = "voice_recognizer.cli:app"
+voice-recognizer = "voice_recognizer.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
