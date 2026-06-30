@@ -58,6 +58,31 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-008 Designer Product/Site Brief
+
+Status: DELIVERED (2026-06-30). Compact handoff for product/site designer agent.
+
+Scope:
+
+- `.agents/designer-product-site-brief.md`
+- `.agents/task-board.md`
+
+Trigger:
+
+- User asked what to give an AI designer so they get enough project context for product packaging/site work without spending tokens on the whole project folder.
+
+What changed:
+
+- Added `.agents/designer-product-site-brief.md`.
+- Brief lists the minimal source set: author concept `.docx`, product requirements, user scenarios, private trial release, local Mac plan and architecture.
+- Brief explains what to ignore: internal agent journals, ASR/model research, outputs, cache, models, tests and source code unless screenshots are needed.
+- Brief includes positioning, target audience, product promises, constraints, expected designer deliverables and a copy-paste prompt.
+
+Checks:
+
+- `git diff --check`;
+- secret scan over `.agents/designer-product-site-brief.md` and `.agents/task-board.md`.
+
 ### Codex - P0-008 External Trial Pack Cleanup
 
 Status: DELIVERED (2026-06-30). User-facing archive trimmed.
