@@ -1,7 +1,4 @@
-import { env } from "cloudflare:workers";
-import { eq, sql } from "drizzle-orm";
-import { getDb } from "@/db";
-import { leads } from "@/db/schema";
+import { markLeadNotified, upsertLead } from "./storage";
 
 const DEFAULT_DOWNLOAD_URL =
   "https://github.com/biztrackru/diktum/releases/download/v0.1.0-alpha.1/diktum-v0.1.0-alpha.1-macos.zip";
@@ -9,9 +6,7 @@ const DEFAULT_DOWNLOAD_URL =
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 type RuntimeEnv = {
-  DB?: D1Database;
   DOWNLOAD_URL?: string;
-  LEADS_EXPORT_TOKEN?: string;
   LEADS_WEBHOOK_TOKEN?: string;
   LEADS_WEBHOOK_URL?: string;
 };
@@ -24,7 +19,7 @@ type LeadPayload = {
 };
 
 function runtimeEnv() {
-  return env as unknown as RuntimeEnv;
+  return process.env as RuntimeEnv;
 }
 
 function json(body: unknown, init?: ResponseInit) {
@@ -47,19 +42,6 @@ function downloadUrl() {
   const configured = runtimeEnv().DOWNLOAD_URL?.trim();
   if (configured && configured.startsWith("https://")) return configured;
   return DEFAULT_DOWNLOAD_URL;
-}
-
-async function ensureLeadSchema() {
-  const db = runtimeEnv().DB;
-  if (!db) return;
-
-  await db.batch([
-    db.prepare(
-      "CREATE TABLE IF NOT EXISTS leads (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, email text NOT NULL, source text DEFAULT 'landing' NOT NULL, locale text DEFAULT 'ru' NOT NULL, first_seen_at text NOT NULL, last_seen_at text NOT NULL, submit_count integer DEFAULT 1 NOT NULL, notified_at text)"
-    ),
-    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS leads_email_unique ON leads (email)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS leads_last_seen_email_idx ON leads (last_seen_at, email)"),
-  ]);
 }
 
 async function forwardLead(email: string, locale: string, source: string) {
@@ -113,37 +95,11 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
 
   try {
-    await ensureLeadSchema();
-    const db = getDb();
-
-    await db
-      .insert(leads)
-      .values({
-        email: normalizedEmail,
-        source,
-        locale,
-        firstSeenAt: now,
-        lastSeenAt: now,
-      })
-      .onConflictDoUpdate({
-        target: leads.email,
-        set: {
-          source,
-          locale,
-          lastSeenAt: now,
-          submitCount: sql`${leads.submitCount} + 1`,
-        },
-      })
-      .run();
-
+    await upsertLead({ email: normalizedEmail, source, locale, now });
     const notified = await forwardLead(normalizedEmail, locale, source).catch(() => false);
 
     if (notified) {
-      await db
-        .update(leads)
-        .set({ notifiedAt: new Date().toISOString() })
-        .where(eq(leads.email, normalizedEmail))
-        .run();
+      await markLeadNotified(normalizedEmail, new Date().toISOString());
     }
 
     return json({ ok: true, downloadUrl: downloadUrl() }, { status: 201 });

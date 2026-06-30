@@ -1,14 +1,11 @@
-import { env } from "cloudflare:workers";
-import { desc } from "drizzle-orm";
-import { getDb } from "@/db";
-import { leads } from "@/db/schema";
+import { listLeads } from "../storage";
 
 type RuntimeEnv = {
   LEADS_EXPORT_TOKEN?: string;
 };
 
 function runtimeEnv() {
-  return env as unknown as RuntimeEnv;
+  return process.env as RuntimeEnv;
 }
 
 function csvCell(value: unknown) {
@@ -30,12 +27,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const rows = await getDb()
-    .select()
-    .from(leads)
-    .orderBy(desc(leads.lastSeenAt))
-    .limit(500)
-    .all();
+  const rows = await listLeads(500);
 
   const header = [
     "email",

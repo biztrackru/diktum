@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "build:gcp": "NEXT_OUTPUT_STANDALONE=1 next build",
     "start": "vinext start",
+    "start:gcp": "next start -H 0.0.0.0 -p ${PORT:-8080}",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
