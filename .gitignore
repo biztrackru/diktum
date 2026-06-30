@@ -4,6 +4,11 @@
 .env.*
 !.env.example
 !app/.env.example
+.github/
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+SECURITY.md
 .cache/
 .dist/
 .models/
@@ -14,6 +19,7 @@ tools/bin/
 __pycache__/
 *.py[cod]
 *$py.class
+tests/
 .agents/runs/
 .agents/tmp/
 .local-quality/
@@ -24,12 +30,7 @@ __pycache__/
 # Local agent coordination and private research notes.
 .agents/
 references/
-docs/*.md
-!docs/README.md
-!docs/architecture.md
-!docs/product-requirements.md
-!docs/setup-secrets.md
-!docs/user-scenarios.md
+docs/
 docs/site/
 docs/asr-benchmark/
 docs/ux/
@@ -44,6 +45,9 @@ app/config/hotwords.txt
 # Local per-file speaker hints. Commit only the example file.
 app/config/speaker-counts.json
 !app/config/speaker-counts.example.json
+
+# Local/developer-only validation helper.
+app/scripts/smoke_local.sh
 
 # Local audio corpus and generated media
 Inbox/

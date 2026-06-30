@@ -43,6 +43,8 @@ Telegram-канал проекта: https://t.me/+ByvsbIefhtkyZGIy
 
 Там будут новости сборок, сбор обратной связи от первых пользователей и короткие заметки по развитию продукта.
 
+GitHub Releases: https://github.com/biztrackru/diktum/releases
+
 ## Требования
 
 Рекомендуется:
@@ -73,7 +75,7 @@ Telegram-канал проекта: https://t.me/+ByvsbIefhtkyZGIy
 ### Из исходников
 
 ```bash
-git clone <repo-url> dictum
+git clone https://github.com/biztrackru/diktum.git dictum
 cd dictum
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
@@ -126,7 +128,7 @@ Batch-пример:
 .venv/bin/dictum batch-process Inbox --output-dir outputs/pipeline-batch
 ```
 
-## Сборка trial pack
+## Сборка дистрибутива
 
 ```bash
 app/scripts/build_install_pack.sh
@@ -141,7 +143,7 @@ app/scripts/build_install_pack.sh
 - `app/`;
 - пустые `Inbox/` и `outputs/`.
 
-В архив намеренно не попадают `.env`, `.venv`, `.models`, `.cache`, `logs`, `tools/bin`, приватные аудио, outputs, внутренние agent-файлы и research notes.
+В архив намеренно не попадают `.env`, `.venv`, `.models`, `.cache`, `logs`, `tools/bin`, приватные аудио, outputs, internal/agent files, tests, docs and developer-only scripts.
 
 ## Конфигурация
 
@@ -155,30 +157,6 @@ cp app/config/hotwords.example.txt app/config/hotwords.txt
 
 `app/config/hotwords.txt` игнорируется Git и не должен попадать в публичные коммиты.
 
-## Документация
-
-- [Product requirements](docs/product-requirements.md)
-- [User scenarios](docs/user-scenarios.md)
-- [Architecture](docs/architecture.md)
-- [Setup secrets](docs/setup-secrets.md)
-- [Security policy](SECURITY.md)
-
-## Для разработчиков
-
-Локальный smoke-набор:
-
-```bash
-app/scripts/smoke_local.sh
-```
-
-Минимальные проверки перед коммитом:
-
-```bash
-zsh -n app/scripts/*.sh *.command
-.venv/bin/python -m compileall app/src tests
-git diff --check
-```
-
 ## Ограничения
 
 - Сейчас основной ASR backend один: `gigastt-gigaam-v3`.
@@ -186,10 +164,6 @@ git diff --check
 - Качество разделения спикеров может снижаться на перекрывающихся голосах и шумных записях.
 - macOS signing/notarization пока не настроены.
 - Self-host/Docker profile и native macOS wrapper находятся в roadmap, но не в текущем alpha baseline.
-
-## Contributing
-
-См. [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

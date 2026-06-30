@@ -8,7 +8,9 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$(cd "$APP_DIR/.." && pwd)"
 DIST_DIR="${VOICE_RECOGNIZER_DIST_DIR:-$WORKSPACE_DIR/.dist}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-PACK_NAME="Диктум Trial $STAMP"
+PACK_LABEL="${DICTUM_PACK_LABEL:-Trial}"
+PACK_VERSION="${DICTUM_PACK_VERSION:-$STAMP}"
+PACK_NAME="Диктум $PACK_LABEL $PACK_VERSION"
 PACK_DIR="$DIST_DIR/$PACK_NAME"
 ARCHIVE="$DIST_DIR/$PACK_NAME.zip"
 GIT_COMMIT="$(git -C "$WORKSPACE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -103,10 +105,10 @@ TXT
 
 write_version_file() {
   cat > "$PACK_DIR/VERSION.txt" <<TXT
-Диктум Trial
+Диктум $PACK_LABEL
 ======================
 
-Build ID: $STAMP-$GIT_COMMIT
+Build ID: $PACK_VERSION-$GIT_COMMIT
 
 Runtime data is local to the unpacked folder and is not part of this build:
 .env, .venv, .models, .cache, tools/bin, Inbox contents, outputs and logs.
@@ -183,7 +185,12 @@ copy_file "Остановить Диктум.command" "$PACK_DIR/Останов�
 copy_file "app/pyproject.toml" "$PACK_DIR/app/pyproject.toml"
 copy_file "app/.env.example" "$PACK_DIR/app/.env.example"
 copy_dir "app/src" "$PACK_DIR/app/src"
-copy_dir "app/scripts" "$PACK_DIR/app/scripts"
+copy_file "app/scripts/doctor_local_mac.sh" "$PACK_DIR/app/scripts/doctor_local_mac.sh"
+copy_file "app/scripts/setup_gigastt.sh" "$PACK_DIR/app/scripts/setup_gigastt.sh"
+copy_file "app/scripts/setup_local_mac.sh" "$PACK_DIR/app/scripts/setup_local_mac.sh"
+copy_file "app/scripts/start_server.sh" "$PACK_DIR/app/scripts/start_server.sh"
+copy_file "app/scripts/stop_server.sh" "$PACK_DIR/app/scripts/stop_server.sh"
+copy_file "app/scripts/unblock_macos.sh" "$PACK_DIR/app/scripts/unblock_macos.sh"
 mkdir -p "$PACK_DIR/app/config"
 copy_file "app/config/speaker-counts.example.json" "$PACK_DIR/app/config/speaker-counts.json"
 copy_file "app/config/hotwords.example.txt" "$PACK_DIR/app/config/hotwords.example.txt"
