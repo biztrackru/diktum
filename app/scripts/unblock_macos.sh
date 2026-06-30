@@ -16,7 +16,7 @@ pause_before_close() {
   read -r "reply?Нажмите Enter, чтобы закрыть это окно..."
 }
 
-echo "Voice Recognizer macOS unblock"
+echo "Диктум macOS unblock"
 echo "Рабочая папка: $WORKSPACE_DIR"
 echo
 echo "macOS может помечать zip из Telegram/AirDrop/браузера как downloaded/quarantined."
@@ -46,9 +46,9 @@ xattr -r -d com.apple.quarantine "$WORKSPACE_DIR" 2>/dev/null || true
 remaining="$(xattr -lr "$WORKSPACE_DIR" 2>/dev/null | grep -c "com.apple.quarantine" || true)"
 if [[ "$remaining" == "0" ]]; then
   echo "[OK] Quarantine-метка снята. Теперь можно запускать:"
-  echo "     Настроить Voice Recognizer.command"
-  echo "     Проверить Voice Recognizer.command"
-  echo "     Запустить Voice Recognizer.command"
+  echo "     Настроить Диктум.command"
+  echo "     Проверить Диктум.command"
+  echo "     Запустить Диктум.command"
   pause_before_close
   exit 0
 fi
@@ -61,6 +61,6 @@ echo "2. Вставьте команду ниже и нажмите Enter:"
 echo
 echo "xattr -dr com.apple.quarantine \"$WORKSPACE_DIR\""
 echo
-echo "3. Потом снова запустите Настроить Voice Recognizer.command."
+echo "3. Потом снова запустите Настроить Диктум.command."
 pause_before_close
 exit 1

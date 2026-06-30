@@ -110,7 +110,7 @@ fi
 
 export PYTHONPATH="$APP_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "Voice Recognizer"
+echo "Диктум"
 echo "Рабочая папка: $WORKSPACE_DIR"
 echo "Приложение:    $APP_DIR"
 echo "Адрес:  $URL"

@@ -58,6 +58,48 @@ Notes:
 
 ## Delivery Journal
 
+### Codex - P0-008 Dictum Brand And Promo Pack Integration
+
+Status: DELIVERED (2026-06-30). Public brand and designer materials integrated.
+
+Scope:
+
+- `docs/site/`
+- root `.command` launchers
+- `app/scripts/`
+- `app/src/voice_recognizer/web.py`
+- product/packaging docs and agent guidance
+- `.gitignore`
+
+Trigger:
+
+- User placed designer materials in `design_promo_pack/` and renamed the product to `Диктум`.
+
+What changed:
+
+- Integrated cleaned designer handoff into `docs/site/`: `dictum-landing.dc.html`, `dictum-sharing-copy.dc.html`, `support.js`, screenshots and a README.
+- Added `design_promo_pack/` to `.gitignore` so raw designer uploads and private `.docx` handoff files stay out of git.
+- Renamed root Finder launchers to `Запустить/Настроить/Остановить/Проверить/Разблокировать Диктум.command`.
+- Updated user-facing web UI, setup/doctor/start/stop/unblock scripts, trial-pack text and docs to use `Диктум`.
+- Kept stable technical identifiers `voice_recognizer`, `voice-recognizer` and `VOICE_RECOGNIZER_*` for compatibility, and added a safe `dictum` CLI alias in `app/pyproject.toml`.
+- Validated renamed trial-pack generation; final shareable zip should be built from the delivered commit so `VERSION.txt` contains the final commit id.
+
+Checks:
+
+- `zsh -n app/scripts/*.sh *.command`;
+- `.venv/bin/python -m compileall app/src`;
+- `app/scripts/smoke_local.sh`;
+- `app/scripts/build_install_pack.sh`;
+- archive root inspection confirmed only user-facing top-level files/folders plus `app/`, empty `Inbox/`, empty `outputs/`;
+- archive exclusion scan found no internal docs, README, SECURITY, LICENSE, raw `design_promo_pack`, private `.env`, `.venv`, `.models`, `.cache`, logs, tools/bin, audio or generated outputs; `app/.env.example` is intentionally included as a template;
+- `git diff --check`;
+- secret scan over changed project files found no real HF/OpenAI tokens.
+
+Notes:
+
+- Historical delivery-journal entries may still mention old build names; current instructions/backlog/package/UI use `Диктум`.
+- The repository folder on this Mac is still `/Users/andrey/Documents/Voice Recognizer`; docs use generic `/path/to/Диктум` where a renamed folder is shown.
+
 ### Codex - P0-008 Designer Product/Site Brief
 
 Status: DELIVERED (2026-06-30). Compact handoff for product/site designer agent.

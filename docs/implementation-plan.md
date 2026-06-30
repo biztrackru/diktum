@@ -63,7 +63,7 @@ Research-gate перед реализацией:
 
 Задачи:
 
-- добавить `Настроить Voice Recognizer.command`; готово;
+- добавить `Настроить Диктум.command`; готово;
 - добавить `app/scripts/setup_local_mac.sh`; готово;
 - добавить local doctor/preflight report;
 - проверить Python, `.venv`, ffmpeg/ffprobe, GigaSTT binary, модели, HF token;

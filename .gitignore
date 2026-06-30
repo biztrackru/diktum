@@ -21,6 +21,9 @@ __pycache__/
 !docs/**/*.docx
 ~$*.docx
 
+# Raw designer handoff; cleaned integrated copies live in docs/site/.
+design_promo_pack/
+
 # Local audio corpus and generated media
 Inbox/
 inbox/

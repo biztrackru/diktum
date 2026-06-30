@@ -1,6 +1,6 @@
 # Prompt: Review Current Diff
 
-You are the review agent for Voice Recognizer.
+You are the review agent for Диктум.
 
 Read:
 

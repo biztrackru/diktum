@@ -113,7 +113,7 @@ def run_web_server(
         web_config = config
 
     server = ThreadingHTTPServer((host, port), Handler)
-    print(f"Voice Recognizer web UI: http://{host}:{port}", flush=True)
+    print(f"Диктум web UI: http://{host}:{port}", flush=True)
     if str(host).strip().lower() not in {"127.0.0.1", "localhost", "::1"}:
         print(
             "[WARNING] The server is bound to a non-local address "
@@ -368,7 +368,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Voice Recognizer</title>
+  <title>Диктум</title>
   <style>
     :root {{
       --bg: #f4f6f7;
@@ -1479,7 +1479,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       <div class="brand">
         <span class="brand-mark">VR</span>
         <div>
-          <h1>Voice Recognizer</h1>
+          <h1>Диктум</h1>
           <p class="brand-subtitle">Локальный рабочий стол транскрибации</p>
         </div>
       </div>
@@ -3197,8 +3197,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           title: "Сервер не отвечает",
           detail: "Интерфейс не смог получить список задач. Обычно это значит, что локальный сервер остановлен или перезапускается.",
           actions: [
-            "Проверьте окно Terminal с сервером или запустите `Запустить Voice Recognizer.command`.",
-            "Если порт занят старым процессом, используйте `Остановить Voice Recognizer.command`, затем запустите снова.",
+            "Проверьте окно Terminal с сервером или запустите `Запустить Диктум.command`.",
+            "Если порт занят старым процессом, используйте `Остановить Диктум.command`, затем запустите снова.",
             "После запуска обновите страницу браузера.",
           ],
         }};
@@ -3217,7 +3217,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       if (/output_dir must stay inside outputs|output.*inside outputs|outside outputs/.test(text)) {{
         return {{
           title: "Папка результатов вне outputs",
-          detail: "Voice Recognizer хранит результаты только внутри локальной папки `outputs/`, чтобы не писать файлы в неожиданное место.",
+          detail: "Диктум хранит результаты только внутри локальной папки `outputs/`, чтобы не писать файлы в неожиданное место.",
           actions: [
             "Верните поле `Результаты` к значению `outputs/pipeline` или другой подпапке внутри `outputs/`.",
             "Не указывайте абсолютный путь к личным папкам или внешним дискам в этом поле.",
@@ -3275,7 +3275,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           detail: "Интерфейс не смог обновить список локальных аудиофайлов.",
           actions: [
             "Проверьте, что папка `Inbox/` существует внутри проекта.",
-            "Запустите `Проверить Voice Recognizer.command`, если папка или права выглядят сломанными.",
+            "Запустите `Проверить Диктум.command`, если папка или права выглядят сломанными.",
             "После исправления нажмите `Обновить` в интерфейсе.",
           ],
         }};
@@ -3331,7 +3331,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           actions: [
             "Нажмите `Обновить`, чтобы получить актуальное состояние очереди.",
             "Running-задачу сначала нужно остановить, а уже потом убирать из списка.",
-            "Если процесс завис, используйте `Остановить Voice Recognizer.command`.",
+            "Если процесс завис, используйте `Остановить Диктум.command`.",
           ],
         }};
       }}
@@ -3340,7 +3340,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           title: "Не найден Hugging Face token",
           detail: "Диаризация pyannote требует локальный `HF_TOKEN` в `.env`. Без него ASR может пройти, но разделение по спикерам упадёт.",
           actions: [
-            "Запустите `Настроить Voice Recognizer.command` и добавьте read-only HF token.",
+            "Запустите `Настроить Диктум.command` и добавьте read-only HF token.",
             "Проверьте `.env`: там должна быть строка `HF_TOKEN=...` без вывода токена в чат.",
             "После исправления повторите задачу с теми же настройками.",
           ],
@@ -3353,7 +3353,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           actions: [
             "Откройте страницу модели pyannote и примите условия доступа для используемого аккаунта.",
             "Убедитесь, что в `.env` лежит токен именно этого аккаунта.",
-            "Запустите проверку `voice-recognizer check-pyannote-access` или `Проверить Voice Recognizer.command`.",
+            "Запустите проверку `voice-recognizer check-pyannote-access` или `Проверить Диктум.command`.",
           ],
         }};
       }}
@@ -3395,8 +3395,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           title: "Проблема с ffmpeg/ffprobe",
           detail: "Аудио не удалось подготовить. Обычно это означает, что ffmpeg не установлен или файл повреждён.",
           actions: [
-            "Запустите `Настроить Voice Recognizer.command` и разрешите установку ffmpeg.",
-            "Проверьте файл командой `Проверить Voice Recognizer.command`.",
+            "Запустите `Настроить Диктум.command` и разрешите установку ffmpeg.",
+            "Проверьте файл командой `Проверить Диктум.command`.",
             "Попробуйте другой аудиофайл, если проблема только у одной записи.",
           ],
         }};
@@ -3406,8 +3406,8 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           title: "Проблема с моделью GigaSTT/GigaAM",
           detail: "ASR-движок не нашёл бинарник или файлы модели.",
           actions: [
-            "Запустите `Настроить Voice Recognizer.command` и разрешите setup GigaSTT.",
-            "Проверьте наличие файлов модели через `Проверить Voice Recognizer.command`.",
+            "Запустите `Настроить Диктум.command` и разрешите setup GigaSTT.",
+            "Проверьте наличие файлов модели через `Проверить Диктум.command`.",
             "Временно переключите ASR-движок, если нужно срочно обработать запись.",
           ],
         }};
@@ -3417,7 +3417,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         detail: "Pipeline остановился. Ниже указаны безопасные следующие шаги; технические подробности остаются в журнале.",
         actions: [
           "Скопируйте последние строки журнала для диагностики.",
-          "Запустите `Проверить Voice Recognizer.command`, чтобы проверить окружение и модели.",
+          "Запустите `Проверить Диктум.command`, чтобы проверить окружение и модели.",
           "Попробуйте короткий тест-фрагмент или повтор на CPU, если ошибка связана с ресурсами.",
         ],
       }};
@@ -4815,7 +4815,7 @@ def _asr_runtime_status(root: Path) -> dict[str, str]:
             "class": "failed",
             "label": "GigaSTT не настроен",
             "detail": "локальный ASR еще не готов",
-            "help": "Откройте 'Настроить Voice Recognizer.command' и разрешите этап 4/5: GigaSTT/GigaAM v3.",
+            "help": "Откройте 'Настроить Диктум.command' и разрешите этап 4/5: GigaSTT/GigaAM v3.",
             "title": "Не найдено: " + ", ".join(missing),
         }
     return {

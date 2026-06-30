@@ -18,7 +18,7 @@
 Один zip:
 
 ```text
-.dist/Voice Recognizer Trial <timestamp>.zip
+.dist/Диктум Trial <timestamp>.zip
 ```
 
 Отдельно от zip:
@@ -69,10 +69,10 @@ app/scripts/build_install_pack.sh
 
 1. Распаковать zip.
 2. Открыть `START_HERE.txt`.
-3. При необходимости запустить `Разблокировать Voice Recognizer.command`.
-4. Запустить `Настроить Voice Recognizer.command`.
-5. Запустить `Проверить Voice Recognizer.command`.
-6. Запустить `Запустить Voice Recognizer.command`.
+3. При необходимости запустить `Разблокировать Диктум.command`.
+4. Запустить `Настроить Диктум.command`.
+5. Запустить `Проверить Диктум.command`.
+6. Запустить `Запустить Диктум.command`.
 7. Загрузить короткий аудиофайл или тестовый фрагмент.
 8. Дождаться результата, переименовать спикеров, открыть текстовые файлы.
 9. Остановить сервер.

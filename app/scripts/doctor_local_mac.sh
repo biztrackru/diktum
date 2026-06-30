@@ -142,7 +142,7 @@ check_homebrew() {
     ok "Homebrew found: $brew_bin"
   else
     warn "Homebrew is not installed or not in PATH."
-    next_step "Run Настроить Voice Recognizer.command and allow Homebrew installation when asked."
+    next_step "Run Настроить Диктум.command and allow Homebrew installation when asked."
   fi
   echo
 }
@@ -154,13 +154,13 @@ check_ffmpeg() {
     ok "ffmpeg found: $(command -v ffmpeg)"
   else
     fail "ffmpeg not found."
-    next_step "Run Настроить Voice Recognizer.command and allow ffmpeg installation."
+    next_step "Run Настроить Диктум.command and allow ffmpeg installation."
   fi
   if command -v ffprobe >/dev/null 2>&1; then
     ok "ffprobe found: $(command -v ffprobe)"
   else
     fail "ffprobe not found."
-    next_step "Run Настроить Voice Recognizer.command and allow ffmpeg installation."
+    next_step "Run Настроить Диктум.command and allow ffmpeg installation."
   fi
   echo
 }
@@ -174,7 +174,7 @@ check_python() {
     ok ".venv Python found: $VENV_PYTHON"
   else
     fail ".venv Python not found."
-    next_step "Run Настроить Voice Recognizer.command to create .venv."
+    next_step "Run Настроить Диктум.command to create .venv."
   fi
 
   if [[ -n "$python_bin" ]]; then
@@ -189,10 +189,10 @@ check_python() {
   fi
 
   if PYTHONPATH="$APP_DIR/src" "$VENV_PYTHON" -m voice_recognizer.cli --help >/dev/null 2>&1; then
-    ok "Voice Recognizer CLI imports from app/src."
+    ok "Диктум CLI imports from app/src."
   else
-    fail "Voice Recognizer CLI cannot be imported."
-    next_step "Run Настроить Voice Recognizer.command to install Python dependencies."
+    fail "Диктум CLI cannot be imported."
+    next_step "Run Настроить Диктум.command to install Python dependencies."
   fi
   echo
 }
@@ -222,7 +222,7 @@ for name in sys.argv[1:]:
 PY
   then
     fail "Could not inspect Python package metadata."
-    next_step "Run Настроить Voice Recognizer.command and allow Python dependency installation."
+    next_step "Run Настроить Диктум.command and allow Python dependency installation."
     rm -f "$report_file"
     echo
     return
@@ -237,10 +237,10 @@ PY
     else
       if [[ "$package" == "pyannote.audio" ]]; then
         fail "Python package missing or broken: $package"
-        next_step "Run Настроить Voice Recognizer.command and allow Python dependency installation."
+        next_step "Run Настроить Диктум.command and allow Python dependency installation."
       else
         fail "Python package missing or broken: $package"
-        next_step "Run Настроить Voice Recognizer.command and allow Python dependency installation."
+        next_step "Run Настроить Диктум.command and allow Python dependency installation."
       fi
     fi
   done < "$report_file"
@@ -255,7 +255,7 @@ check_env() {
     ok ".env exists."
   else
     fail ".env is missing."
-    next_step "Run Настроить Voice Recognizer.command to create .env and add HF_TOKEN."
+    next_step "Run Настроить Диктум.command to create .env and add HF_TOKEN."
     echo
     return
   fi
@@ -266,7 +266,7 @@ check_env() {
     ok "HF_TOKEN is configured. Value is hidden."
   else
     fail "HF_TOKEN is missing or still a placeholder."
-    next_step "Run Настроить Voice Recognizer.command and paste the read-only Hugging Face token."
+    next_step "Run Настроить Диктум.command and paste the read-only Hugging Face token."
   fi
   echo
 }
@@ -288,7 +288,7 @@ check_models() {
     ok "GigaSTT binary found: tools/bin/gigastt"
   else
     fail "GigaSTT binary is missing."
-    next_step "Run Настроить Voice Recognizer.command again and allow stage 4/5: GigaSTT/GigaAM v3."
+    next_step "Run Настроить Диктум.command again and allow stage 4/5: GigaSTT/GigaAM v3."
     next_step "This downloads the local ASR binary from GitHub into tools/bin/."
   fi
 
@@ -317,7 +317,7 @@ check_models() {
     fi
   done
   if (( missing > 0 )); then
-    next_step "Run Настроить Voice Recognizer.command again and allow GigaSTT/GigaAM model download."
+    next_step "Run Настроить Диктум.command again and allow GigaSTT/GigaAM model download."
     next_step "Models are stored locally in .models/gigastt/ and are reused on the next run."
   fi
   echo
@@ -362,7 +362,7 @@ check_ports() {
     if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
       warn "Port $port is already in use."
       lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
-      next_step "Use Остановить Voice Recognizer.command if this is an old Voice Recognizer server."
+      next_step "Use Остановить Диктум.command if this is an old Диктум server."
     else
       ok "Port $port is free."
     fi
@@ -391,7 +391,7 @@ print_summary() {
 }
 
 init_logging
-echo "Voice Recognizer doctor"
+echo "Диктум doctor"
 echo "Рабочая папка: $WORKSPACE_DIR"
 echo "Приложение:    $APP_DIR"
 echo

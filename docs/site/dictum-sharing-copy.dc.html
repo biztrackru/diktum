@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Диктум — тексты для шаринга и README</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@0,400;0,500;0,600&family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:#f5f4f1;color:#1a1816;font-family:'Golos Text',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  ::selection{background:#3a5446;color:#f5f4f1}
+  .vr-text p{margin:0 0 12px}
+  .vr-text p:last-child{margin-bottom:0}
+  .vr-text .row{margin:0}
+</style>
+</helmet>
+<div data-screen-label="Тексты для шаринга" style="min-height:100vh;background:#f5f4f1;padding:0 24px 96px">
+  <div style="max-width:820px;margin:0 auto">
+
+    <!-- HEADER -->
+    <header style="padding:clamp(48px,8vw,88px) 0 40px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:26px">
+        <span style="width:30px;height:30px;border-radius:8px;background:#3a5446;display:flex;align-items:center;justify-content:center;flex:none"><span style="font-family:'Spectral',serif;font-weight:600;font-size:17px;color:#f5f4f1;line-height:1">Д</span></span>
+        <span style="font-family:'Spectral',serif;font-weight:600;font-size:19px;letter-spacing:-.01em">Диктум</span>
+      </div>
+      <h1 style="font-family:'Spectral',serif;font-weight:600;font-size:clamp(30px,4.5vw,46px);line-height:1.08;letter-spacing:-.018em;margin:0 0 16px;text-wrap:balance">Тексты для шаринга и README</h1>
+      <p style="font-size:clamp(15px,1.6vw,18px);line-height:1.6;color:#57534d;margin:0 0 16px;max-width:600px">Готовые блоки для внешнего описания проекта и распространения через личные сообщения и Telegram. Нажмите «Копировать» — текст уйдёт в буфер обмена.</p>
+      <p style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#8a5a44;margin:0;background:rgba(138,90,68,.08);border:1px solid rgba(138,90,68,.2);border-radius:9px;padding:11px 14px;display:inline-block">Замените [ссылка] на адрес сайта/дистрибутива, а Telegram и GitHub — на ваши ссылки.</p>
+    </header>
+
+    <!-- README -->
+    <p style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#3a5446;margin:32px 0 16px">Внешний README / описание</p>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">README · русский</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Копировать</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p style="font-weight:600;font-size:16px;color:#1a1816">Диктум</p>
+        <p>Локальный инструмент для Mac, который точно превращает длинные русские записи в чистые протоколы обсуждений — с пунктуацией и разделением по спикерам.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Что делает</p>
+        <p class="row">— Точно распознаёт русскую речь с пунктуацией, локально на вашем Mac</p>
+        <p class="row">— Разделяет реплики по спикерам; голоса можно прослушать и подписать</p>
+        <p class="row">— Тянет длинные записи — часы аудио — за счёт обработки по частям</p>
+        <p class="row">— Пакетно обрабатывает папку файлов через очередь</p>
+        <p class="row">— Экспортирует чистый протокол в Markdown и TXT — для людей и для AI-агентов</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Точность</p>
+        <p>Мы тщательно подбираем AI-модели, сильные именно на русском. По нашим тестам точность и пунктуация заметно лучше, чем у популярного Whisper.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Скорость и требования</p>
+        <p class="row">— На MacBook с M4/M5 и 32 ГБ час записи обрабатывается за 2–3 минуты (≈30× быстрее длины записи)</p>
+        <p class="row">— Mac на Apple Silicon (M1–M5), 16 ГБ RAM (32 ГБ — для длинных записей и batch)</p>
+        <p class="row">— Дистрибутив меньше 1 МБ; при первой настройке скачивает модели (нужен интернет, ~2–4 ГБ трафика)</p>
+        <p class="row">— После установки папка занимает ~1.5–2 ГБ; для комфортной работы держите свободными 20–30 ГБ</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Приватность</p>
+        <p>Аудио, промежуточные файлы и тексты остаются на вашем компьютере. Ничего не уходит в облако без вашего явного выбора. Без обязательной подписки.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Как начать</p>
+        <p class="row">1. Скачайте и распакуйте архив (меньше 1 МБ).</p>
+        <p class="row">2. Откройте START_HERE.</p>
+        <p class="row">3. Один раз настройте окружение ярлыком — программа скачает модели (нужен интернет), без Terminal.</p>
+        <p class="row">4. Запустите: интерфейс откроется в браузере. Загрузите запись, дождитесь результата, подпишите спикеров, откройте протокол.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Статус и обратная связь</p>
+        <p>Это альфа-версия. Распространяется бесплатно на условии обратной связи — нам важны ваши отзывы о качестве распознавания и удобстве. Новости о новых версиях — в Telegram-канале, часть проекта открыта на GitHub.</p>
+        <p class="row">Сайт: [ссылка] · Telegram: [ссылка] · GitHub: [ссылка]</p>
+      </div>
+    </div>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">README · English</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Copy</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p style="font-weight:600;font-size:16px;color:#1a1816">Diktum</p>
+        <p>A local Mac tool that accurately turns long Russian recordings into clean discussion protocols — with punctuation and speakers separated.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">What it does</p>
+        <p class="row">— Accurately transcribes Russian speech with punctuation, locally on your Mac</p>
+        <p class="row">— Separates speakers; play voice samples and assign names</p>
+        <p class="row">— Handles long recordings — hours of audio — by processing in chunks</p>
+        <p class="row">— Batch-processes a folder of files through a queue</p>
+        <p class="row">— Exports a clean protocol to Markdown and TXT — for people and for AI agents</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Accuracy</p>
+        <p>We carefully choose AI models strong specifically in Russian. In our tests, accuracy and punctuation are noticeably better than the popular Whisper.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Speed & requirements</p>
+        <p class="row">— On a MacBook with M4/M5 and 32 GB, an hour of audio is processed in 2–3 minutes (≈30× faster than real time)</p>
+        <p class="row">— Apple Silicon Mac (M1–M5), 16 GB RAM (32 GB for long recordings and batch)</p>
+        <p class="row">— Download under 1 MB; first setup fetches the models (internet needed, ~2–4 GB)</p>
+        <p class="row">— After install the folder takes ~1.5–2 GB; keep 20–30 GB free for comfortable work</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Privacy</p>
+        <p>Audio, intermediate files, and texts stay on your computer. Nothing goes to the cloud without your explicit choice. No mandatory subscription.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Getting started</p>
+        <p class="row">1. Download and unzip the archive (under 1 MB).</p>
+        <p class="row">2. Open START_HERE.</p>
+        <p class="row">3. Set up once via a shortcut — it downloads the models (internet needed), no Terminal.</p>
+        <p class="row">4. Launch: the interface opens in your browser. Upload a recording, wait, name the speakers, open the protocol.</p>
+        <p style="font-weight:600;color:#1a1816;margin-top:18px">Status & feedback</p>
+        <p>This is an alpha. It's free in exchange for feedback — your notes on recognition quality and usability matter. Version news is on Telegram; part of the project is open on GitHub.</p>
+        <p class="row">Site: [link] · Telegram: [link] · GitHub: [link]</p>
+      </div>
+    </div>
+
+    <!-- TELEGRAM DM -->
+    <p style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#3a5446;margin:40px 0 16px">Telegram · личные сообщения</p>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">Тёплое — знакомому</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Копировать</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p>Привет! Я собрал инструмент — Диктум. Локально на Mac он точно расшифровывает длинные русские записи (интервью, обучения, созвоны) с пунктуацией, разделяет реплики по спикерам и собирает готовый протокол. По моим тестам точнее, чем Whisper.</p>
+        <p>Всё работает на твоём компьютере — без облака и подписки. Сейчас это альфа, раздаю бесплатно в обмен на обратную связь. Если работаешь с записями — попробуй, мне важно твоё мнение. [ссылка]</p>
+      </div>
+    </div>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">Нейтральное — коллеге</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Копировать</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p>Делюсь инструментом, который может пригодиться, если работаете с диктофонными записями. Диктум — локальное приложение для Mac: точно расшифровывает длинные записи на русском с пунктуацией, разделяет реплики по спикерам и выгружает протокол в Markdown/TXT. Всё остаётся на вашем Mac, без подписки.</p>
+        <p>Это альфа-версия, распространяю бесплатно в обмен на отзыв. Буду рад обратной связи о качестве и удобстве. [ссылка]</p>
+      </div>
+    </div>
+
+    <!-- TELEGRAM CHANNEL -->
+    <p style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#3a5446;margin:40px 0 16px">Telegram · канал</p>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">Описание канала (bio)</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Копировать</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p>Диктум — локальный инструмент для Mac: точные протоколы из длинных русских записей с разделением по спикерам. Всё на вашем компьютере, без облака и подписки. Здесь — новости версий, гайды и сбор обратной связи. Скачать: [ссылка]</p>
+      </div>
+    </div>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">Пост-анонс</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Копировать</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p style="font-weight:600;color:#1a1816">Диктум — длинные записи в точные протоколы, локально на Mac</p>
+        <p>Если вы работаете с интервью, обучениями или многочасовыми созвонами, знакома боль: нужен не просто текст, а точный протокол — кто что сказал, с пунктуацией и таймкодами. На русском и на длинных файлах это особенно тяжело.</p>
+        <p>Диктум делает это прямо на вашем Mac:</p>
+        <p class="row">— точно распознаёт русскую речь с пунктуацией (по нашим тестам точнее Whisper)</p>
+        <p class="row">— разделяет реплики по спикерам, голоса можно подписать</p>
+        <p class="row">— час записи обрабатывает за 2–3 минуты, тянет часы аудио и пакеты</p>
+        <p class="row">— выгружает чистый протокол в Markdown/TXT — удобно людям и AI-агентам</p>
+        <p>Приватно: аудио не уходит в облако, без подписки. Дистрибутив меньше 1 МБ, модели догружаются при первой настройке.</p>
+        <p>Сейчас это альфа — раздаю бесплатно в обмен на обратную связь. Забрать и попробовать: [ссылка]. Подписывайтесь, чтобы узнавать о новых версиях.</p>
+      </div>
+    </div>
+
+    <!-- UNIVERSAL SHORT -->
+    <p style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#3a5446;margin:40px 0 16px">Короткий универсальный пост</p>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">Короткий · русский</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Копировать</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p>Диктум — локальный инструмент для Mac: точно превращает длинные русские записи в протоколы с пунктуацией и разделением по спикерам. Час аудио за 2–3 минуты, всё на вашем компьютере, без облака и подписки. Альфа, бесплатно за обратную связь: [ссылка]</p>
+      </div>
+    </div>
+
+    <div data-snip style="background:#fbfaf8;border:1px solid rgba(26,24,22,.12);border-radius:14px;padding:22px 24px;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid rgba(26,24,22,.08)">
+        <span style="font-weight:600;font-size:15px;color:#1a1816">Short · English</span>
+        <button onClick="{{ copyBtn }}" style="border:1px solid rgba(26,24,22,.16);background:#fff;color:#1a1816;padding:8px 14px;border-radius:9px;font-family:'Golos Text',sans-serif;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap">Copy</button>
+      </div>
+      <div data-text class="vr-text" style="font-size:14.5px;line-height:1.62;color:#33302b">
+        <p>Diktum — a local Mac tool that accurately turns long Russian recordings into protocols with punctuation and speakers separated. An hour of audio in 2–3 minutes, everything on your computer — no cloud, no subscription. Alpha, free for feedback: [link]</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  copy(e) {
+    const btn = e.currentTarget;
+    const card = btn.closest('[data-snip]');
+    if (!card) return;
+    const t = card.querySelector('[data-text]');
+    if (!t) return;
+    const text = t.innerText.replace(/\n{3,}/g, '\n\n').trim();
+    const done = () => {
+      const orig = btn.getAttribute('data-orig') || btn.textContent;
+      btn.setAttribute('data-orig', orig);
+      btn.textContent = orig.toLowerCase().startsWith('copy') ? 'Copied ✓' : 'Скопировано ✓';
+      btn.style.background = '#3a5446';
+      btn.style.color = '#f5f4f1';
+      btn.style.borderColor = '#3a5446';
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.style.background = '#fff';
+        btn.style.color = '#1a1816';
+        btn.style.borderColor = 'rgba(26,24,22,.16)';
+      }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => { this.fallback(text); done(); });
+    } else {
+      this.fallback(text);
+      done();
+    }
+  }
+
+  fallback(text) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (_) {}
+  }
+
+  renderVals() {
+    return { copyBtn: (e) => this.copy(e) };
+  }
+}
+</script>
+</body>
+</html>

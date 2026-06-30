@@ -242,7 +242,7 @@ def test_web_render_js_syntax() -> None:
 
         handler = object.__new__(Handler)
         html = Handler._render_index(handler)
-        assert "<title>Voice Recognizer</title>" in html
+        assert "<title>Диктум</title>" in html
         scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
         assert scripts, "rendered page should contain inline JS"
         script_path = root / "rendered-index.js"

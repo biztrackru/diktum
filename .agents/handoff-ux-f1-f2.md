@@ -17,7 +17,7 @@ Implemented portion 1 from `.agents/next-task-ux-implementation.md`: visible foc
 
 - `.venv/bin/python -m compileall app/src` - pass.
 - `VOICE_RECOGNIZER_PORT=8782 VOICE_RECOGNIZER_OUTPUT_DIR=outputs/ui-f2-smoke VOICE_RECOGNIZER_OPEN_BROWSER=0 VOICE_RECOGNIZER_PAUSE_ON_EXIT=0 app/scripts/start_server.sh` - pass.
-- Browser/IAB page identity - `http://127.0.0.1:8782/`, title `Voice Recognizer`, console warnings/errors empty.
+- Browser/IAB page identity - `http://127.0.0.1:8782/`, title `Диктум`, console warnings/errors empty.
 - F2 live regression - processed a 30-second job with two speaker samples; typed `Андрей Петрович` into speaker 1 in chunks, waited 6.9 seconds, value/focus/caret stayed intact.
 - Apply names smoke - export rerender completed with `ASR: -, diarization: -`; console stayed clean.
 - Mobile smoke at 390x760 - no horizontal overflow, console clean.

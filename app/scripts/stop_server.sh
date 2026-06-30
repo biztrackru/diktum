@@ -48,7 +48,7 @@ port_pids=()
 process_pids=()
 still_running=()
 
-echo "Voice Recognizer: остановка серверов"
+echo "Диктум: остановка серверов"
 echo "Рабочая папка: $WORKSPACE_DIR"
 echo "Приложение:    $APP_DIR"
 echo
@@ -77,7 +77,7 @@ if command -v pgrep >/dev/null 2>&1; then
 fi
 
 if (( ${#pids[@]} == 0 )); then
-  echo "Запущенных серверов Voice Recognizer не найдено."
+  echo "Запущенных серверов Диктум не найдено."
   pause_before_close
   exit 0
 fi

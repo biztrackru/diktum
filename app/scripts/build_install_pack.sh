@@ -8,7 +8,7 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_DIR="$(cd "$APP_DIR/.." && pwd)"
 DIST_DIR="${VOICE_RECOGNIZER_DIST_DIR:-$WORKSPACE_DIR/.dist}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-PACK_NAME="Voice Recognizer Trial $STAMP"
+PACK_NAME="Диктум Trial $STAMP"
 PACK_DIR="$DIST_DIR/$PACK_NAME"
 ARCHIVE="$DIST_DIR/$PACK_NAME.zip"
 GIT_COMMIT="$(git -C "$WORKSPACE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -31,36 +31,36 @@ copy_dir() {
 
 write_start_here() {
   cat > "$PACK_DIR/START_HERE.txt" <<'TXT'
-Voice Recognizer Trial Pack
+Диктум Trial Pack
 ===========================
 
 Что это
 -------
-Voice Recognizer - локальное приложение для Mac. Оно помогает превратить
+Диктум - локальное приложение для Mac. Оно помогает превратить
 аудиозапись встречи, интервью или обучения в текст с разделением по спикерам.
 
 Записи, результаты, модели и токены хранятся только в этой папке на вашем Mac.
 
 Быстрый старт
 -------------
-1. Распакуйте zip в обычную папку, например ~/Applications/Voice Recognizer Trial.
+1. Распакуйте zip в обычную папку, например ~/Applications/Диктум Trial.
 2. Откройте распакованную папку в Finder.
 3. Если macOS блокирует запуск, дважды кликните
-   "Разблокировать Voice Recognizer.command".
-4. Дважды кликните "Настроить Voice Recognizer.command" и отвечайте на вопросы.
-5. Дважды кликните "Проверить Voice Recognizer.command".
+   "Разблокировать Диктум.command".
+4. Дважды кликните "Настроить Диктум.command" и отвечайте на вопросы.
+5. Дважды кликните "Проверить Диктум.command".
 6. Если проверка не нашла блокирующих проблем, дважды кликните
-   "Запустить Voice Recognizer.command".
+   "Запустить Диктум.command".
 7. Браузер должен открыться на http://127.0.0.1:8765/.
 8. Загрузите короткий аудиофайл и запустите обработку.
 9. После результата проверьте текст, назовите спикеров и откройте файлы результата.
 10. Чтобы завершить работу, дважды кликните
-    "Остановить Voice Recognizer.command".
+    "Остановить Диктум.command".
 11. После теста заполните "FEEDBACK_TEMPLATE.txt".
 
 Если macOS блокирует запуск
 ---------------------------
-1. Правый клик по "Разблокировать Voice Recognizer.command".
+1. Правый клик по "Разблокировать Диктум.command".
 2. Нажмите Open/Открыть.
 3. Если macOS попросит подтверждение в Privacy & Security, нажмите Open Anyway.
 4. После этого обычные команды настройки, проверки и запуска должны открываться
@@ -91,7 +91,7 @@ Setup может попросить разрешение установить и
 
 Что делать при проблеме
 -----------------------
-1. Запустите "Проверить Voice Recognizer.command".
+1. Запустите "Проверить Диктум.command".
 2. Откройте папку logs/.
 3. Перешлите разработчику только:
    - logs/setup-latest.log
@@ -103,7 +103,7 @@ TXT
 
 write_version_file() {
   cat > "$PACK_DIR/VERSION.txt" <<TXT
-Voice Recognizer Trial
+Диктум Trial
 ======================
 
 Build ID: $STAMP-$GIT_COMMIT
@@ -115,7 +115,7 @@ TXT
 
 write_feedback_template() {
   cat > "$PACK_DIR/FEEDBACK_TEMPLATE.txt" <<'TXT'
-Voice Recognizer Feedback
+Диктум Feedback
 =========================
 
 Пожалуйста, заполните после теста. Не прикладывайте .env, аудио, outputs или
@@ -131,15 +131,15 @@ Voice Recognizer Feedback
 Установка
 ---------
 1. Получилось распаковать zip:
-2. Нужно было запускать "Разблокировать Voice Recognizer.command":
-3. "Настроить Voice Recognizer.command" дошел до конца:
+2. Нужно было запускать "Разблокировать Диктум.command":
+3. "Настроить Диктум.command" дошел до конца:
 4. Что было непонятно в setup:
-5. "Проверить Voice Recognizer.command" показал failures=0:
+5. "Проверить Диктум.command" показал failures=0:
 6. Если были ошибки, какие строки из logs/setup-latest.log или logs/doctor-latest.log можно прислать без токенов:
 
 Запуск и интерфейс
 ------------------
-1. "Запустить Voice Recognizer.command" открыл браузер:
+1. "Запустить Диктум.command" открыл браузер:
 2. Адрес был http://127.0.0.1:8765/:
 3. Файл загрузился через интерфейс:
 4. Очередь/статус задачи были понятны:
@@ -174,11 +174,11 @@ prune_runtime_files() {
 
 mkdir -p "$PACK_DIR"
 
-copy_file "Проверить Voice Recognizer.command" "$PACK_DIR/Проверить Voice Recognizer.command"
-copy_file "Разблокировать Voice Recognizer.command" "$PACK_DIR/Разблокировать Voice Recognizer.command"
-copy_file "Настроить Voice Recognizer.command" "$PACK_DIR/Настроить Voice Recognizer.command"
-copy_file "Запустить Voice Recognizer.command" "$PACK_DIR/Запустить Voice Recognizer.command"
-copy_file "Остановить Voice Recognizer.command" "$PACK_DIR/Остановить Voice Recognizer.command"
+copy_file "Проверить Диктум.command" "$PACK_DIR/Проверить Диктум.command"
+copy_file "Разблокировать Диктум.command" "$PACK_DIR/Разблокировать Диктум.command"
+copy_file "Настроить Диктум.command" "$PACK_DIR/Настроить Диктум.command"
+copy_file "Запустить Диктум.command" "$PACK_DIR/Запустить Диктум.command"
+copy_file "Остановить Диктум.command" "$PACK_DIR/Остановить Диктум.command"
 
 copy_file "app/pyproject.toml" "$PACK_DIR/app/pyproject.toml"
 copy_file "app/.env.example" "$PACK_DIR/app/.env.example"

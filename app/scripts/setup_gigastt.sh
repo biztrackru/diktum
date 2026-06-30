@@ -80,7 +80,7 @@ verify_gigastt_ready() {
   if [[ "$missing" != "0" ]]; then
     echo
     echo "GigaSTT/GigaAM v3 is not complete yet."
-    echo "Run Настроить Voice Recognizer.command again and allow stage 4/5."
+    echo "Run Настроить Диктум.command again and allow stage 4/5."
     return 1
   fi
   return 0
@@ -177,7 +177,7 @@ verify_model_checksums() {
 cat <<TXT
 GigaSTT / GigaAM v3 setup
 -------------------------
-Это основной локальный ASR-движок Voice Recognizer для русского языка.
+Это основной локальный ASR-движок Диктум для русского языка.
 Он превращает аудио в текст. Pyannote/HF token нужны отдельно только для
 разделения по спикерам.
 
@@ -190,7 +190,7 @@ GigaSTT / GigaAM v3 setup
 Будут скачаны GigaSTT release с GitHub, GigaAM v3 модели через gigastt
 и небольшая RUPunct-модель с Hugging Face для пунктуации/регистра.
 Это может занять несколько минут и сотни мегабайт. Если сеть оборвется,
-запустите "Настроить Voice Recognizer.command" еще раз: готовые файлы
+запустите "Настроить Диктум.command" еще раз: готовые файлы
 будут переиспользованы.
 
 TXT

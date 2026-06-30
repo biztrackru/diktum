@@ -1,7 +1,7 @@
 [project]
 name = "voice-recognizer"
 version = "0.1.0"
-description = "Local Russian transcription and speaker diarization pipeline for iPhone voice memos."
+description = "Diktum: local Russian transcription and speaker diarization pipeline for long voice recordings."
 requires-python = ">=3.10,<3.14"
 # Dependencies are bounded with upper limits for reproducible, supply-chain-safe
 # installs. Prefer regenerating a full lock file (pip-tools/uv) before release.
@@ -28,6 +28,7 @@ docs = [
 ]
 
 [project.scripts]
+dictum = "voice_recognizer.cli:app"
 voice-recognizer = "voice_recognizer.cli:app"
 
 [build-system]

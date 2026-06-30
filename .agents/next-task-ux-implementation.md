@@ -66,7 +66,7 @@ VOICE_RECOGNIZER_PORTS=8782 VOICE_RECOGNIZER_PAUSE_ON_EXIT=0 app/scripts/stop_se
 ## Готовый промпт для следующего агента (скопировать)
 
 ```text
-Ты implementation-агент проекта Voice Recognizer. Прочитай AGENTS.md, CLAUDE.md,
+Ты implementation-агент проекта Диктум. Прочитай AGENTS.md, CLAUDE.md,
 .agents/handoff-ux-redesign.md, docs/ux-audit.md и docs/ux-acceptance-scenarios.md,
 открой эталон docs/ux/voice-recognizer-prototype.html.
 

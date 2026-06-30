@@ -4,7 +4,7 @@
 
 ## Цель
 
-Сделать Voice Recognizer локальным Mac-продуктом, который обычный пользователь может установить и запустить без помощи разработчика.
+Сделать Диктум локальным Mac-продуктом, который обычный пользователь может установить и запустить без помощи разработчика.
 
 Практический ориентир: пользователь получает папку или установочный пакет, кликает setup/launch файлы, отвечает на понятные вопросы, загружает запись через браузер и получает текстовый результат.
 
@@ -38,7 +38,7 @@
 Приложение отделено от рабочей зоны проекта:
 
 ```text
-Voice Recognizer/
+Диктум/
   app/src/voice_recognizer/     # код приложения
   app/scripts/                  # setup/start/stop helpers
   app/config/                   # проектные конфиги и примеры
@@ -57,9 +57,9 @@ Voice Recognizer/
 
 ```text
 VoiceRecognizerLocal/
-  Voice Recognizer.command
-  Stop Voice Recognizer.command
-  Настроить Voice Recognizer.command
+  Диктум.command
+  Stop Диктум.command
+  Настроить Диктум.command
   app/
     src/
     scripts/
@@ -87,7 +87,7 @@ VoiceRecognizerLocal/
 8. Проверка GigaAM/GigaSTT model files.
 9. Проверка pyannote/HF token без печати токена.
 10. Мини-smoke: импорт Python modules, доступность CLI, запуск web help.
-11. Предложение открыть Voice Recognizer.
+11. Предложение открыть Диктум.
 
 Каждый шаг должен иметь состояния:
 
@@ -113,7 +113,7 @@ VoiceRecognizerLocal/
 
 ### Вариант A. Минимальный сейчас
 
-- `Настроить Voice Recognizer.command`;
+- `Настроить Диктум.command`;
 - текущие `Запустить` и `Остановить`;
 - local web UI.
 
@@ -146,7 +146,7 @@ VoiceRecognizerLocal/
 Текущий статус:
 
 - добавить `app/scripts/setup_local_mac.sh`; готово;
-- добавить `Настроить Voice Recognizer.command`; готово;
+- добавить `Настроить Диктум.command`; готово;
 - добавить команду/скрипт `doctor`; готово;
 - сделать человекочитаемый отчет окружения; готово на уровне скрипта, private trial acceptance пройден;
 - развивать текущую структуру `app/` без смешивания кода приложения и локальных пользовательских данных; готово как dev/product hybrid.
@@ -154,7 +154,7 @@ VoiceRecognizerLocal/
 
 Trial pack status:
 
-- архив создается в `.dist/Voice Recognizer Trial <timestamp>.zip`;
+- архив создается в `.dist/Диктум Trial <timestamp>.zip`;
 - в архив входят только пользовательские файлы: launchers, `app/`, `START_HERE.txt`, `VERSION.txt`, `FEEDBACK_TEMPLATE.txt`, пустые `Inbox/` и `outputs/`;
 - в архив не входят внутренние docs/README/release notes, `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио, generated transcripts и приватные outputs;
 - приемочный сценарий для Mac супруги записан в `docs/spouse-mac-install-trial.md` и пройден для private trial;

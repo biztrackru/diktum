@@ -1,4 +1,4 @@
-# Voice Recognizer
+# Диктум
 
 Локальное приложение для транскрибации диктофонных записей с iPhone: русский ASR, разделение по спикерам, удобный экспорт в текстовые форматы.
 
@@ -14,7 +14,7 @@
 
 ## Приватность и безопасность
 
-Voice Recognizer спроектирован как локальный однопользовательский инструмент.
+Диктум спроектирован как локальный однопользовательский инструмент.
 
 **Что остаётся на вашем Mac (никуда не отправляется):**
 
@@ -101,11 +101,11 @@ Salute/Sber.
 
 Самый простой путь на macOS:
 
-1. Дважды кликнуть `Настроить Voice Recognizer.command`.
+1. Дважды кликнуть `Настроить Диктум.command`.
 2. Разрешить установку Homebrew/ffmpeg/Python-зависимостей/моделей, если setup спросит и объяснит зачем.
-3. Дважды кликнуть `Проверить Voice Recognizer.command`, чтобы получить отчет по Python, ffmpeg, моделям, `.env`, pyannote и портам.
+3. Дважды кликнуть `Проверить Диктум.command`, чтобы получить отчет по Python, ffmpeg, моделям, `.env`, pyannote и портам.
 4. Убедиться, что `.env` содержит `HF_TOKEN` для pyannote/speaker diarization. Setup объяснит, где взять read-only token, примет его скрытым вводом и сохранит локально.
-5. Дважды кликнуть `Запустить Voice Recognizer.command`.
+5. Дважды кликнуть `Запустить Диктум.command`.
 
 ## Пробный установочный пак для другого Mac
 
@@ -117,7 +117,7 @@ Salute/Sber.
 app/scripts/build_install_pack.sh
 ```
 
-Скрипт создаст `.dist/Voice Recognizer Trial <timestamp>.zip`.
+Скрипт создаст `.dist/Диктум Trial <timestamp>.zip`.
 
 В архив входят только пользовательские файлы: launchers, `START_HERE.txt`, `VERSION.txt`, `FEEDBACK_TEMPLATE.txt`, `app/`, пустые `Inbox/` и `outputs/`. В архив намеренно не входят внутренние `docs/`, README, `.env`, `.venv`, `.models`, `.cache`, `tools/bin`, аудио из `Inbox/` и результаты из `outputs/`.
 
@@ -125,7 +125,7 @@ HF token нужен только для pyannote, то есть для разд�
 
 GigaSTT / GigaAM v3 - это основной локальный ASR-движок для русского языка: он превращает аудио в текст. Binary и модели не входят в zip, потому что они тяжелые и должны быть подготовлены на целевом Mac. На этапе `4/5: GigaSTT/GigaAM v3` setup скачивает `tools/bin/gigastt`, модели в `.models/gigastt/` и небольшую RUPunct-модель в `.models/gigastt/punct/` для пунктуации/регистра. Если сеть оборвалась, setup можно запустить повторно: готовые части будут переиспользованы.
 
-Setup и doctor пишут локальные диагностические логи в `logs/`. Если после успешного setup web UI все еще пишет `GigaSTT не настроен`, запустите `Проверить Voice Recognizer.command` и пришлите только:
+Setup и doctor пишут локальные диагностические логи в `logs/`. Если после успешного setup web UI все еще пишет `GigaSTT не настроен`, запустите `Проверить Диктум.command` и пришлите только:
 
 - `logs/setup-latest.log`
 - `logs/doctor-latest.log`
@@ -138,21 +138,23 @@ Setup и doctor пишут локальные диагностические л�
 
 1. Распаковать zip в обычную папку.
 2. Открыть `START_HERE.txt`.
-3. Если macOS показывает предупреждение `не удалось проверить на наличие вредоносного ПО`, один раз запустить `Разблокировать Voice Recognizer.command`.
-4. Затем дважды кликнуть `Настроить Voice Recognizer.command`.
-5. После setup запустить `Проверить Voice Recognizer.command`.
-6. Если doctor показывает `failures=0`, запустить `Запустить Voice Recognizer.command`.
+3. Если macOS показывает предупреждение `не удалось проверить на наличие вредоносного ПО`, один раз запустить `Разблокировать Диктум.command`.
+4. Затем дважды кликнуть `Настроить Диктум.command`.
+5. После setup запустить `Проверить Диктум.command`.
+6. Если doctor показывает `failures=0`, запустить `Запустить Диктум.command`.
 7. После теста заполнить `FEEDBACK_TEMPLATE.txt`.
 
-Про macOS Gatekeeper: текущий trial pack не подписан Apple Developer ID и не notarized, поэтому macOS может предлагать `Переместить в корзину`. Малый workaround - снять quarantine-метку с распакованной папки через `Разблокировать Voice Recognizer.command` или Terminal:
+Про macOS Gatekeeper: текущий trial pack не подписан Apple Developer ID и не notarized, поэтому macOS может предлагать `Переместить в корзину`. Малый workaround - снять quarantine-метку с распакованной папки через `Разблокировать Диктум.command` или Terminal:
 
 ```bash
-xattr -dr com.apple.quarantine "/path/to/Voice Recognizer Trial"
+xattr -dr com.apple.quarantine "/path/to/Диктум Trial"
 ```
 
 Правильное release-решение на будущее - Developer ID signing + notarization.
 
-Если на этапе Homebrew/ffmpeg видны ошибки `Failed to download resource`, `curl: (28)` или `curl: (35)` для `ghcr.io`, это сетевой сбой скачивания bottle'ов Homebrew. Остановите setup, попробуйте другую сеть/позже и запустите `Настроить Voice Recognizer.command` снова. Setup можно повторять безопасно.
+Если на этапе Homebrew/ffmpeg видны ошибки `Failed to download resource`, `curl: (28)` или `curl: (35)` для `ghcr.io`, это сетевой сбой скачивания bottle'ов Homebrew. Остановите setup, попробуйте другую сеть/позже и запустите `Настроить Диктум.command` снова. Setup можно повторять безопасно.
+
+Техническое имя Python-пакета пока остается `voice-recognizer`/`voice_recognizer` для совместимости со старыми скриптами и окружениями. Новый CLI-алиас `dictum` добавлен, но dev-команды ниже могут использовать старое имя без смены публичного бренда.
 
 Ручной путь для разработки:
 
@@ -191,10 +193,10 @@ app/scripts/smoke_local.sh
 
 Самый простой способ запуска на macOS:
 
-1. Открыть папку проекта `/Users/andrey/Documents/Voice Recognizer`.
-2. При первом запуске дважды кликнуть `Настроить Voice Recognizer.command`.
-3. Если хочется проверить готовность без запуска сервера, дважды кликнуть `Проверить Voice Recognizer.command`.
-4. После успешной настройки дважды кликнуть `Запустить Voice Recognizer.command`.
+1. Открыть папку проекта `/path/to/Диктум`.
+2. При первом запуске дважды кликнуть `Настроить Диктум.command`.
+3. Если хочется проверить готовность без запуска сервера, дважды кликнуть `Проверить Диктум.command`.
+4. После успешной настройки дважды кликнуть `Запустить Диктум.command`.
 5. Оставить открывшееся окно Terminal работать.
 
 Ярлык сам перейдет в папку проекта, запустит web-сервер на `127.0.0.1:8765` и откроет браузер.
@@ -208,7 +210,7 @@ app/scripts/smoke_local.sh
 Запуск из Terminal вручную, если ярлык не нужен:
 
 ```bash
-cd "/Users/andrey/Documents/Voice Recognizer"
+cd "/path/to/Диктум"
 .venv/bin/voice-recognizer web --port 8765
 ```
 
@@ -217,7 +219,7 @@ cd "/Users/andrey/Documents/Voice Recognizer"
 Проверка установки без запуска сервера:
 
 ```bash
-cd "/Users/andrey/Documents/Voice Recognizer"
+cd "/path/to/Диктум"
 app/scripts/doctor_local_mac.sh
 ```
 
@@ -251,7 +253,7 @@ curl -s http://127.0.0.1:8765/ >/dev/null && echo "server ok"
 
 Остановить сервер корректно:
 
-1. Дважды кликнуть `Остановить Voice Recognizer.command`.
+1. Дважды кликнуть `Остановить Диктум.command`.
 2. Если ярлык нашел запущенный сервер, подтвердить остановку в окне Terminal.
 
 Ручной способ:
@@ -297,7 +299,7 @@ lsof -nP -iTCP:8765 -sTCP:LISTEN
 Batch-обработка всей папки без web-интерфейса:
 
 ```bash
-cd "/Users/andrey/Documents/Voice Recognizer"
+cd "/path/to/Диктум"
 set -a
 source .env
 set +a
@@ -307,7 +309,7 @@ set +a
 Один файл без web-интерфейса:
 
 ```bash
-cd "/Users/andrey/Documents/Voice Recognizer"
+cd "/path/to/Диктум"
 set -a
 source .env
 set +a

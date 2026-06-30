@@ -93,7 +93,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --path-as-is http://127.0.0.1:8765/outp
 These need a human decision or a real macOS run with the models:
 
 1. **License confirmation.** `LICENSE` is MIT with a placeholder copyright line
-   (`2026 Voice Recognizer authors`). Confirm the license and the holder name.
+   (`2026 Диктум authors`). Confirm the license and the holder name.
 2. **Pin `gigaam`.** Replace the unpinned git dependency in `pyproject.toml`
    with a reviewed `@<commit>` (cannot be chosen safely from here).
 3. **Fill model SHA-256.** Run `setup_gigastt.sh` once on a Mac; paste the

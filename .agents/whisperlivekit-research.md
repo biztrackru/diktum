@@ -6,7 +6,7 @@ Source: https://github.com/QuentinFuxa/WhisperLiveKit
 
 ## Decision
 
-WhisperLiveKit is not a replacement for Voice Recognizer's current local-file workflow.
+WhisperLiveKit is not a replacement for Диктум's current local-file workflow.
 
 It is a strong reference for:
 

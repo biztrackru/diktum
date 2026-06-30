@@ -1,6 +1,6 @@
 # Claude Code Instructions
 
-Read this file first when working on Voice Recognizer.
+Read this file first when working on Диктум.
 
 ## One sentence mission
 

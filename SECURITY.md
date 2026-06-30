@@ -15,7 +15,7 @@ an issue before public disclosure.
 
 ## Threat model
 
-Voice Recognizer is a **local, single-user macOS tool**. The web UI binds to
+Диктум is a **local, single-user macOS tool**. The web UI binds to
 `127.0.0.1` and has **no authentication by design**. The trust assumption is
 that the person running the app controls the machine.
 

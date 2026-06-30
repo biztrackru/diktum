@@ -22,7 +22,7 @@
 
 Evidence:
 
-- page identity: `Voice Recognizer` at `http://127.0.0.1:8791/`;
+- page identity: `Диктум` at `http://127.0.0.1:8791/`;
 - console health: no browser `warn`/`error` logs during checked flows;
 - desktop: 5 Inbox files, 15 disk-backed results, 5 processed Inbox badges, no horizontal overflow;
 - mobile `390x844`: 5 Inbox rows, run modes visible, `Очередь/Готовые` visible, no horizontal overflow;

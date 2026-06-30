@@ -2,7 +2,7 @@
 
 Дата: 2026-06-27.
 
-Цель: проверить, может ли обычный пользователь на Apple Silicon Mac распаковать Voice Recognizer, настроить его двойным кликом и запустить локальный web UI без помощи разработчика.
+Цель: проверить, может ли обычный пользователь на Apple Silicon Mac распаковать Диктум, настроить его двойным кликом и запустить локальный web UI без помощи разработчика.
 
 ## Что передаем
 
@@ -12,7 +12,7 @@
 app/scripts/build_install_pack.sh
 ```
 
-Передавать файл из `.dist/Voice Recognizer Trial <timestamp>.zip`.
+Передавать файл из `.dist/Диктум Trial <timestamp>.zip`.
 
 Архив намеренно не содержит:
 
@@ -24,19 +24,19 @@ app/scripts/build_install_pack.sh
 - результаты из `outputs/`;
 - generated transcripts или приватные черновики.
 
-HF token не вкладывать в zip. Для теста на семейном Mac лучше создать отдельный Hugging Face read-only token, например `voice-recognizer-family-test`, передать его отдельно от архива и вставить в setup скрытым вводом. После проверки token можно отозвать в Hugging Face settings.
+HF token не вкладывать в zip. Для теста на семейном Mac лучше создать отдельный Hugging Face read-only token, например `dictum-family-test`, передать его отдельно от архива и вставить в setup скрытым вводом. После проверки token можно отозвать в Hugging Face settings.
 
-macOS Gatekeeper может блокировать `.command` файлы из zip сообщением `не удалось проверить на наличие вредоносного ПО` и предлагать `Переместить в корзину`. Текущий trial pack не подписан Apple Developer ID и не notarized. Малый workaround: один раз запустить `Разблокировать Voice Recognizer.command`, который снимает quarantine-метку со всей распакованной папки. Если macOS блокирует даже helper, fallback через Terminal:
+macOS Gatekeeper может блокировать `.command` файлы из zip сообщением `не удалось проверить на наличие вредоносного ПО` и предлагать `Переместить в корзину`. Текущий trial pack не подписан Apple Developer ID и не notarized. Малый workaround: один раз запустить `Разблокировать Диктум.command`, который снимает quarantine-метку со всей распакованной папки. Если macOS блокирует даже helper, fallback через Terminal:
 
 ```bash
-xattr -dr com.apple.quarantine "/path/to/Voice Recognizer Trial"
+xattr -dr com.apple.quarantine "/path/to/Диктум Trial"
 ```
 
 Путь удобнее не печатать руками: вставить `xattr -dr com.apple.quarantine ` с пробелом в конце, перетащить папку из Finder в Terminal и нажать Enter.
 
 GigaSTT / GigaAM v3 тоже не входит в zip. Это основной локальный ASR-движок для русского языка: он превращает аудио в текст. Setup скачивает binary в `tools/bin/gigastt`, модели в `.models/gigastt/` и RUPunct-файлы в `.models/gigastt/punct/` на этапе `4/5: GigaSTT/GigaAM v3`. Для этого нужен интернет; если загрузка оборвалась, запустить setup повторно.
 
-Setup и doctor пишут локальные логи в `logs/`. Если web UI после setup все еще пишет `GigaSTT не настроен`, запустить `Проверить Voice Recognizer.command` и переслать разработчику только:
+Setup и doctor пишут локальные логи в `logs/`. Если web UI после setup все еще пишет `GigaSTT не настроен`, запустить `Проверить Диктум.command` и переслать разработчику только:
 
 - `logs/setup-latest.log`;
 - `logs/doctor-latest.log`.
@@ -66,10 +66,10 @@ Setup и doctor пишут локальные логи в `logs/`. Если web 
 
 ## Сценарий A: почти чистый Mac
 
-1. Распаковать zip в обычную папку, например `~/Applications/Voice Recognizer Trial`.
+1. Распаковать zip в обычную папку, например `~/Applications/Диктум Trial`.
 2. Открыть папку в Finder.
-3. Если macOS блокирует `.command`, запустить `Разблокировать Voice Recognizer.command` или Terminal fallback выше.
-4. Дважды кликнуть `Настроить Voice Recognizer.command`.
+3. Если macOS блокирует `.command`, запустить `Разблокировать Диктум.command` или Terminal fallback выше.
+4. Дважды кликнуть `Настроить Диктум.command`.
 5. Если macOS все еще блокирует запуск, открыть через правый клик -> `Open` или System Settings -> Privacy & Security -> `Open Anyway`.
 6. Прочитать каждый вопрос setup и выбрать безопасный happy path:
    - установить Homebrew, если его нет;
@@ -80,21 +80,21 @@ Setup и doctor пишут локальные логи в `logs/`. Если web 
    - создать `.env`;
    - вставить read-only HF token скрытым вводом, когда setup объяснит шаг;
    - скачать GigaSTT/GigaAM v3 на этапе 4/5.
-7. В конце setup согласиться запустить Voice Recognizer, либо закрыть окно и запустить вручную `Запустить Voice Recognizer.command`.
+7. В конце setup согласиться запустить Диктум, либо закрыть окно и запустить вручную `Запустить Диктум.command`.
 8. Убедиться, что браузер открыл `http://127.0.0.1:8765/`.
 9. Загрузить короткий безопасный тестовый аудиофайл через web UI.
 10. Запустить `Тест-фрагмент` на 30-120 секунд.
 11. Дождаться результата или понятной ошибки с next step.
-12. Нажать `Остановить Voice Recognizer.command` и подтвердить остановку.
+12. Нажать `Остановить Диктум.command` и подтвердить остановку.
 
 ## Сценарий B: semi-clean Mac
 
 Если Homebrew/Python уже есть:
 
-1. Сначала запустить `Проверить Voice Recognizer.command`.
+1. Сначала запустить `Проверить Диктум.command`.
 2. Записать все `[FAIL]` и `[WARN]`.
-3. Запустить `Настроить Voice Recognizer.command`.
-4. После setup снова запустить `Проверить Voice Recognizer.command`.
+3. Запустить `Настроить Диктум.command`.
+4. После setup снова запустить `Проверить Диктум.command`.
 5. Считать сценарий успешным, если doctor показывает `failures=0`.
 
 ## Что считать успехом
@@ -126,14 +126,14 @@ Setup и doctor пишут локальные логи в `logs/`. Если web 
 2. Не переходить к Python dependencies, HF token и GigaSTT/model download в этом же прогоне.
 3. Проверить обычные причины сетевого сбоя: стабильный Wi-Fi, VPN/proxy/adblock, дата/время macOS.
 4. Попробовать другую сеть или мобильный hotspot.
-5. Снова запустить `Настроить Voice Recognizer.command`.
+5. Снова запустить `Настроить Диктум.command`.
 
-Это не утечка данных Voice Recognizer. На этом шаге Homebrew скачивает ffmpeg и его зависимости. Уже скачанные части обычно переиспользуются при повторном запуске.
+Это не утечка данных Диктум. На этом шаге Homebrew скачивает ffmpeg и его зависимости. Уже скачанные части обычно переиспользуются при повторном запуске.
 
 ## Что записывать как blocker
 
 - macOS не дает запустить `.command`, а инструкция через правый клик не помогает.
-- `Разблокировать Voice Recognizer.command` и Terminal fallback не снимают Gatekeeper-блокировку.
+- `Разблокировать Диктум.command` и Terminal fallback не снимают Gatekeeper-блокировку.
 - Setup требует непонятную ручную команду.
 - Homebrew/ffmpeg/Python installation падает без понятного next step.
 - `.env` создается, но token виден в логе.

@@ -69,7 +69,7 @@ phase() {
 homebrew_network_hint() {
   echo "      -> Это похоже на сетевую ошибку Homebrew при скачивании bottle'ов с ghcr.io."
   echo "      -> Ничего приватного в этот момент не отправляется: Homebrew скачивает ffmpeg и его зависимости."
-  echo "      -> Лучше остановиться, попробовать другую сеть/позже и снова запустить Настроить Voice Recognizer.command."
+  echo "      -> Лучше остановиться, попробовать другую сеть/позже и снова запустить Настроить Диктум.command."
   echo "      -> Уже скачанные части Homebrew обычно переиспользует при повторном запуске."
 }
 
@@ -359,7 +359,7 @@ print_hf_token_help() {
   echo "4. Создайте read-only token: https://huggingface.co/settings/tokens"
   echo
   echo "Для семейного теста лучше создать отдельный read-only token, например"
-  echo "voice-recognizer-family-test. Его можно передать отдельно от zip и"
+  echo "dictum-family-test. Его можно передать отдельно от zip и"
   echo "потом отозвать в Hugging Face settings."
   echo
   echo "Не кладите реальный token в zip, README, чат или скриншоты. Setup сохранит"
@@ -409,7 +409,7 @@ print_gigastt_help() {
   echo
   echo "Зачем нужен GigaSTT / GigaAM v3"
   echo "--------------------------------"
-  echo "Это основной локальный ASR-движок Voice Recognizer для русского языка:"
+  echo "Это основной локальный ASR-движок Диктум для русского языка:"
   echo "он превращает аудио в текст на этом Mac. Без него web UI откроется,"
   echo "но обработка записей не запустится."
   echo
@@ -509,7 +509,7 @@ ensure_gigastt() {
 
   print_gigastt_inventory
   fail "GigaSTT/GigaAM v3 не подготовлены. Распознавание не запустится до настройки моделей."
-  echo "      -> Запустите Настроить Voice Recognizer.command еще раз и подтвердите этап GigaSTT/GigaAM v3."
+  echo "      -> Запустите Настроить Диктум.command еще раз и подтвердите этап GigaSTT/GigaAM v3."
   echo "      -> Пришлите файл лога: ${LOG_FILE:-$LOG_DIR/setup-latest.log}"
   return 1
 }
@@ -553,7 +553,7 @@ smoke_test() {
 }
 
 print_header() {
-  echo "Voice Recognizer setup"
+  echo "Диктум setup"
   echo "Рабочая папка: $WORKSPACE_DIR"
   echo "Приложение:    $APP_DIR"
   echo
@@ -583,7 +583,7 @@ print_next_steps() {
   echo
   if (( fail_count == 0 )); then
     echo "Базовая подготовка завершена."
-    if ask_yes_no "Запустить Voice Recognizer сейчас?" "y"; then
+    if ask_yes_no "Запустить Диктум сейчас?" "y"; then
       "$APP_DIR/scripts/start_server.sh"
       exit $?
     fi
