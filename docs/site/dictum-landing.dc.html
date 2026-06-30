@@ -284,7 +284,7 @@
     <button onClick="{{ openGate }}" data-i18n="cta.btn" style="border:0;background:#f5f4f1;color:#1a1816;padding:16px 30px;border-radius:12px;font-family:'Golos Text',sans-serif;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 10px 30px -8px rgba(0,0,0,.35)">Скачать и попробовать</button>
     <div style="display:flex;gap:24px;justify-content:center;margin-top:26px;flex-wrap:wrap">
       <a href="https://t.me/+ByvsbIefhtkyZGIy" target="_blank" rel="noopener" data-i18n="cta.tg" style="color:#dce7df;font-size:14.5px;font-weight:500;text-decoration:none;border-bottom:1px solid rgba(220,231,223,.4);padding-bottom:2px">Telegram-канал →</a>
-      <a href="https://github.com/REPLACE_REPO" target="_blank" rel="noopener" data-i18n="cta.gh" style="color:#dce7df;font-size:14.5px;font-weight:500;text-decoration:none;border-bottom:1px solid rgba(220,231,223,.4);padding-bottom:2px">GitHub →</a>
+      <a href="https://github.com/biztrackru/diktum" target="_blank" rel="noopener" data-i18n="cta.gh" style="color:#dce7df;font-size:14.5px;font-weight:500;text-decoration:none;border-bottom:1px solid rgba(220,231,223,.4);padding-bottom:2px">GitHub →</a>
     </div>
   </div>
 </section>
@@ -298,7 +298,7 @@
   <p data-i18n="foot.made" style="font-size:13.5px;color:#8a857d;margin:0;flex:1;min-width:220px">Личный проект на этапе альфа-тестирования. Буду рад обратной связи и идеям.</p>
   <div style="display:flex;gap:18px;align-items:center">
     <a href="https://t.me/+ByvsbIefhtkyZGIy" target="_blank" rel="noopener" style="font-size:13.5px;color:#3a5446;text-decoration:none;font-weight:500">Telegram</a>
-    <a href="https://github.com/REPLACE_REPO" target="_blank" rel="noopener" style="font-size:13.5px;color:#3a5446;text-decoration:none;font-weight:500">GitHub</a>
+    <a href="https://github.com/biztrackru/diktum" target="_blank" rel="noopener" style="font-size:13.5px;color:#3a5446;text-decoration:none;font-weight:500">GitHub</a>
     <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#a39e95">© 2026</span>
   </div>
 </footer>
@@ -325,7 +325,7 @@
       <p data-i18n="modal.ok.p" style="font-size:14.5px;line-height:1.55;color:#6b6760;margin:0 0 22px">Скачайте zip и откройте START_HERE внутри. Дистрибутив маленький — модели догрузятся при первой настройке.</p>
       <a id="vr-dl" href="#REPLACE_WITH_YOUR_ZIP_URL" download data-i18n="modal.ok.btn" style="display:block;text-decoration:none;background:#1a1816;color:#f5f4f1;padding:15px;border-radius:11px;font-family:'Golos Text',sans-serif;font-size:16px;font-weight:600">Скачать .zip для Mac</a>
       <a href="https://t.me/+ByvsbIefhtkyZGIy" target="_blank" rel="noopener" data-i18n="modal.ok.tg" style="display:inline-block;margin-top:16px;color:#3a5446;font-size:13.5px;font-weight:500;text-decoration:none;border-bottom:1px solid rgba(58,84,70,.35);padding-bottom:2px">Подпишитесь на Telegram о новых версиях →</a>
-      <p data-i18n="modal.ok.note" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#b0aaa0;margin:16px 0 0">Подставьте ссылку на дистрибутив и GitHub</p>
+      <p data-i18n="modal.ok.note" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#b0aaa0;margin:16px 0 0">Подставьте ссылку на дистрибутив</p>
     </div>
   </div>
 </div>
@@ -392,7 +392,7 @@ class Component extends DCLogic {
     "modal.ph": "you@email.com", "modal.err": "Please check your email address.",
     "modal.btn": "Reveal link", "modal.priv": "Only for the link and updates. Never shared.",
     "modal.ok.h": "Done — link below", "modal.ok.p": "Download the zip and open START_HERE inside. The download is small — models are fetched on first setup.",
-    "modal.ok.btn": "Download .zip for Mac", "modal.ok.tg": "Subscribe on Telegram for updates →", "modal.ok.note": "Replace with your distribution and GitHub links"
+    "modal.ok.btn": "Download .zip for Mac", "modal.ok.tg": "Subscribe on Telegram for updates →", "modal.ok.note": "Replace with your distribution link"
   };
 
   root() { return document.getElementById('vr-root'); }

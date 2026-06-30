@@ -13,7 +13,8 @@
 
 1. Открыть `dictum-landing.dc.html` или `dictum-sharing-copy.dc.html` в браузере.
 2. Telegram уже подставлен: `https://t.me/+ByvsbIefhtkyZGIy`.
-3. Перед публикацией заменить `REPLACE_REPO`, `#REPLACE_WITH_YOUR_ZIP_URL` и `[ссылка]` на сайт/дистрибутив.
+3. GitHub уже подставлен: `https://github.com/biztrackru/diktum`.
+4. Перед публикацией заменить `#REPLACE_WITH_YOUR_ZIP_URL` и `[ссылка]` / `[link]` на сайт/дистрибутив.
 
 Эти материалы не входят в trial-pack приложения. Trial-pack остается минимальным: только launchers, `START_HERE.txt`, `VERSION.txt`, `FEEDBACK_TEMPLATE.txt`, `app/`, `Inbox/`, `outputs/`.
 
