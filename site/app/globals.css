@@ -215,8 +215,8 @@ input {
 
 .hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.04fr) minmax(360px, 0.96fr);
-  gap: 64px;
+  grid-template-columns: minmax(0, 1.32fr) minmax(320px, 0.68fr);
+  gap: 48px;
   align-items: center;
 }
 
@@ -246,9 +246,9 @@ h3 {
 }
 
 h1 {
-  max-width: 700px;
+  max-width: 760px;
   margin-bottom: 22px;
-  font-size: 58px;
+  font-size: clamp(46px, 4.05vw, 54px);
   font-weight: 600;
   line-height: 1.05;
   text-wrap: balance;
@@ -751,9 +751,43 @@ blockquote {
 }
 
 .footer p {
+  flex: 1;
+  min-width: 240px;
   margin: 0;
   color: var(--faint);
   font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.footer p a {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-family: "Spectral", serif;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.footer-brand-mark {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--green);
+  color: var(--paper);
+  font-family: "Spectral", serif;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .footer div {
@@ -915,7 +949,8 @@ blockquote {
   }
 
   h1 {
-    font-size: 48px;
+    max-width: 640px;
+    font-size: 46px;
   }
 
   h2 {

@@ -17,7 +17,7 @@ const copy = {
     heroEyebrow: "Локально на Mac · Точно на русском · Альфа",
     heroTitle: "Длинные записи — в точные протоколы обсуждений.",
     heroText:
-      "Точное распознавание русской речи с пунктуацией, разделение реплик по спикерам и готовый протокол. На вашем Mac, без облака, без подписки, без Terminal.",
+      "Точное распознавание русской речи с пунктуацией, разделение реплик по спикерам и готовый протокол. На вашем Mac, без облака, без подписки, без установки или работы через Terminal.",
     heroCta: "Скачать для Mac",
     heroSecondary: "Как это работает",
     heroNote: "Бесплатно на условии обратной связи · Apple Silicon · .m4a .mp3 .wav .mp4",
@@ -104,7 +104,8 @@ const copy = {
     ctaButton: "Скачать и попробовать",
     tg: "Telegram-канал",
     github: "GitHub",
-    footer: "Личный проект на этапе альфа-тестирования. Буду рад обратной связи и идеям.",
+    footerAuthor: "Личный проект методолога изменений Андрея Майера",
+    footerFeedback: "Буду рад обратной связи и идеям развития через Тг-канал проекта.",
     modalTitle: "Скачать Диктум",
     modalText: "Укажите email. Мы сохраним заявку, а скачивание ZIP начнется сразу после отправки формы.",
     placeholder: "you@email.com",
@@ -125,7 +126,7 @@ const copy = {
     heroEyebrow: "Local on Mac · Accurate in Russian · Alpha",
     heroTitle: "Long recordings into accurate discussion protocols.",
     heroText:
-      "Accurate Russian speech recognition with punctuation, speaker separation, and a ready protocol. On your Mac, with no cloud, no subscription, and no Terminal.",
+      "Accurate Russian speech recognition with punctuation, speaker separation, and a ready protocol. On your Mac, with no cloud, no subscription, and no Terminal install or Terminal workflow.",
     heroCta: "Download for Mac",
     heroSecondary: "How it works",
     heroNote: "Free in exchange for feedback · Apple Silicon · .m4a .mp3 .wav .mp4",
@@ -212,7 +213,8 @@ const copy = {
     ctaButton: "Download and try",
     tg: "Telegram channel",
     github: "GitHub",
-    footer: "A personal project in alpha testing. Feedback and ideas are welcome.",
+    footerAuthor: "A personal project by change methodologist Andrey Mayer",
+    footerFeedback: "Feedback and development ideas are welcome via the project Telegram channel.",
     modalTitle: "Download Diktum",
     modalText: "Enter your email. We will save the request, and the ZIP download starts right after the form is sent.",
     placeholder: "you@email.com",
@@ -512,11 +514,21 @@ export default function DiktumLanding() {
       </section>
 
       <footer className="footer">
-        <a className="brand" href="#top">
-          <span className="brand-mark">{lang === "ru" ? "Д" : "D"}</span>
+        <a className="footer-brand" href="#top" aria-label={t.brand}>
+          <span className="footer-brand-mark">{lang === "ru" ? "Д" : "D"}</span>
           <span>{t.brand}</span>
         </a>
-        <p>{t.footer}</p>
+        <p>
+          {t.footerAuthor}{" "}
+          <a href="https://biztrack.ru/am" target="_blank" rel="noreferrer">
+            biztrack.ru/am
+          </a>
+          . {t.footerFeedback}{" "}
+          <a href="https://t.me/+ByvsbIefhtkyZGIy" target="_blank" rel="noreferrer">
+            Telegram
+          </a>
+          .
+        </p>
         <div>
           <a href="https://t.me/+ByvsbIefhtkyZGIy" target="_blank" rel="noreferrer">
             Telegram
