@@ -1,6 +1,6 @@
 [project]
 name = "voice-recognizer"
-version = "0.1.0"
+version = "0.2.0a1"
 description = "Diktum: local Russian transcription and speaker diarization pipeline for long voice recordings."
 requires-python = ">=3.10,<3.14"
 # Dependencies are bounded with upper limits for reproducible, supply-chain-safe
@@ -11,6 +11,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ctc = [
+    "numpy>=1.26,<3.0",
+    "onnxruntime>=1.20,<2.0",
+]
 asr = [
     # SECURITY: pin to a reviewed commit before distributing. An unpinned
     # git dependency installs whatever is on the default branch at install

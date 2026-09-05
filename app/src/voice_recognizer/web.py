@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 from voice_recognizer.audio import SUPPORTED_MEDIA_EXTENSIONS, iter_media_files, safe_stem
-from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, normalize_asr_engine
+from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, CTC_ENGINE, artifact_suffix, configured_default, normalize_asr_engine
 from voice_recognizer.multipart import FilePart, MultipartError, stream_form_files
 
 
@@ -205,6 +205,13 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/jobs":
             self._send_json({"jobs": _job_list(self.web_config.root)}, head_only=head_only)
             return
+        if parsed.path == "/api/voice-profiles":
+            from voice_recognizer.voice_profiles import profile_summary
+            try:
+                self._send_json({"profiles": profile_summary(self.web_config.root)}, head_only=head_only)
+            except ValueError as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+            return
         if parsed.path.startswith("/api/jobs/"):
             job_id = parsed.path.removeprefix("/api/jobs/").split("/", 1)[0]
             with JOBS_LOCK:
@@ -223,6 +230,37 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if not self._guard(mutating=True):
             return
         parsed = urlparse(self.path)
+        if parsed.path == "/api/results/reveal":
+            try:
+                payload = self._read_json_body()
+                _reveal_result_folder(str(payload.get("result_id") or ""), self.web_config.root)
+            except (ValueError, OSError, subprocess.SubprocessError) as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"ok": True})
+            return
+        if parsed.path.startswith("/api/voice-profiles/"):
+            try:
+                payload = self._read_json_body()
+                manifest = _voice_manifest(str(payload.get("result_id") or ""), self.web_config.root)
+                from voice_recognizer.voice_profiles import enroll, suggest, confirm
+                action = parsed.path.removeprefix("/api/voice-profiles/")
+                if action == "suggest":
+                    result = suggest(self.web_config.root, manifest)
+                elif action == "enroll":
+                    result = enroll(self.web_config.root, manifest, str(payload.get("speaker") or ""), str(payload.get("name") or ""))
+                elif action == "confirm":
+                    speakers = payload.get("speakers")
+                    if not isinstance(speakers, list) or not all(isinstance(s, str) and s.isdigit() for s in speakers):
+                        raise ValueError("Нужен список выбранных спикеров.")
+                    result = confirm(self.web_config.root, manifest, speakers, str(payload.get("revision") or ""))
+                else:
+                    raise ValueError("Неизвестная операция с профилями.")
+            except (ValueError, OSError) as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+            return
         if parsed.path == "/api/uploads":
             try:
                 files = self._save_uploads()
@@ -289,7 +327,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             start = _optional_float(payload.get("start"))
             duration = _optional_float(payload.get("duration"))
             device = str(payload.get("device") or "auto")
-            asr_engine = normalize_asr_engine(str(payload.get("asr_engine") or DEFAULT_ASR_ENGINE))
+            asr_engine = normalize_asr_engine(str(payload.get("asr_engine") or configured_default(self.web_config.root)))
             speaker_mode, num_speakers, min_speakers, max_speakers = _speaker_constraints_from_payload(payload)
             output_dir = _resolve_output_dir(self.web_config.root, str(payload.get("output_dir") or self.web_config.output_dir))
             overwrite = bool(payload.get("overwrite"))
@@ -322,6 +360,15 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         if not self._guard(mutating=True):
             return
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/voice-profiles/"):
+            from voice_recognizer.voice_profiles import remove_profile
+            try:
+                remove_profile(self.web_config.root, parsed.path.removeprefix("/api/voice-profiles/"))
+            except (ValueError, OSError) as error:
+                self._send_json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json({"deleted": True})
+            return
         if parsed.path.startswith("/api/jobs/"):
             job_id = parsed.path.removeprefix("/api/jobs/").split("/", 1)[0].strip("/")
             try:
@@ -334,7 +381,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 
     def _render_index(self) -> str:
-        files = iter_media_files(self.web_config.inbox)
+        files = sorted(iter_media_files(self.web_config.inbox), key=lambda path: (-path.stat().st_mtime, path.name.casefold()))
         file_count = len(files)
         rows = "\n".join(
             f"""
@@ -357,8 +404,14 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
             f'<option value="{html.escape(path.name)}">{html.escape(path.name)}</option>'
             for path in files
         )
+        from voice_recognizer.handy_ctc import availability
+        ctc_ready, _ = availability()
+        selected_engine = configured_default(self.web_config.root)
         asr_options = "\n".join(
-            _render_asr_engine_option(choice.value, choice.label, choice.available)
+            _render_asr_engine_option(choice.value, choice.label,
+                                     choice.available and (choice.value != CTC_ENGINE or ctc_ready),
+                                     selected_engine=selected_engine,
+                                     status=_asr_runtime_status(self.web_config.root, choice.value))
             for choice in ASR_ENGINE_CHOICES
         )
         engine_status = _asr_runtime_status(self.web_config.root)
@@ -1335,10 +1388,19 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
     .speaker-row {{
       display: grid;
-      grid-template-columns: 92px minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px 10px;
       align-items: center;
     }}
+    .speaker-row {{ padding: 14px 0; border-bottom: 1px solid var(--border); }}
+    .speaker-row[hidden] {{ display: none; }}
+    .speaker-heading {{ font-size: 14px; }}
+    .speaker-name-field {{ grid-column: 1 / -1; }}
+    .speaker-note {{ font-size: 12px; color: var(--muted); }}
+    .speaker-proposal {{ padding: 10px; background: var(--accent-soft); border-radius: 6px; }}
+    .speaker-toolbar, .result-folder-actions {{ display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }}
+    .speaker-toolbar label {{ display: flex; align-items: center; gap: 8px; }}
+    .speaker-toolbar select {{ width: auto; }}
     .speaker-row audio {{
       width: 100%;
       height: 34px;
@@ -1346,6 +1408,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     .speaker-row input {{
       grid-column: 1 / -1;
     }}
+    .speaker-row [data-enroll-speaker] {{ grid-column: 1 / -1; justify-self: start; }}
+    .voice-panel {{ padding: 12px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 10px; }}
+    .voice-panel h3 {{ margin: 0 0 8px; font-size: 14px; }}
+    .voice-match {{ display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; }}
+    .voice-match input {{ width: 16px; height: 16px; min-height: 0; padding: 0; flex: 0 0 16px; }}
+    .voice-panel .actions {{ flex-wrap: wrap; }}
     .log-summary {{
       display: grid;
       gap: 10px;
@@ -1496,7 +1564,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         <section class="panel">
           <div class="panel-head">
             <div class="panel-title">
-              <h2>Inbox</h2>
+              <h2>Источники</h2>
             </div>
             <span class="badge" id="file-count">{file_count} файлов</span>
           </div>
@@ -1510,11 +1578,24 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                 <span class="badge" id="upload-status" aria-live="polite">готово</span>
               </div>
             </form>
-            <label>Источник
+            <label>Сортировка
+              <select id="source-sort">
+                <option value="date-desc">По дате · сначала новые</option>
+                <option value="date-asc">По дате · сначала старые</option>
+                <option value="name-asc">По имени · А–Я</option>
+                <option value="name-desc">По имени · Я–А</option>
+              </select>
+            </label>
+            <label id="single-source-field">Источник
               <select name="source" id="source-select" form="job-form" required>
                 {options}
               </select>
             </label>
+              <div class="batch-tools" id="batch-tools" hidden>
+                <span class="badge" id="batch-selection-count">0 выбрано</span>
+                <button class="preset-button" type="button" data-batch-action="all">Все</button>
+                <button class="preset-button" type="button" data-batch-action="none">Ни одного</button>
+              </div>
             <div class="file-list" id="file-list">
               {rows or '<div class="empty">Inbox пуст</div>'}
             </div>
@@ -1531,12 +1612,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               <div class="segmented run-segmented" role="group" aria-label="Режим обработки">
                 <button class="segment active" id="mode-single" type="button" data-mode="single">Один файл</button>
                 <button class="segment" id="mode-clip" type="button" data-mode="clip">Тест-фрагмент</button>
-                <button class="segment" id="mode-batch" type="button" data-mode="batch">Весь Inbox</button>
-              </div>
-              <div class="batch-tools" id="batch-tools" hidden>
-                <span class="badge" id="batch-selection-count">0 выбрано</span>
-                <button class="preset-button" type="button" data-batch-action="all">Все</button>
-                <button class="preset-button" type="button" data-batch-action="none">Ни одного</button>
+                <button class="segment" id="mode-batch" type="button" data-mode="batch">Несколько файлов</button>
               </div>
               <div class="conditional-controls" id="clip-fields" hidden>
                 <div class="grid-2">
@@ -1560,7 +1636,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
                 <select name="asr_engine">
                   {asr_options}
                 </select>
-                <span class="engine-status" title="{html.escape(engine_status['title'])}">
+                <span id="asr-runtime-status" class="engine-status" title="{html.escape(engine_status['title'])}">
                   <span class="badge {html.escape(engine_status['class'])}">{html.escape(engine_status['label'])}</span>
                   <span>{html.escape(engine_status['detail'])}</span>
                   <span class="engine-help">{html.escape(engine_status['help'])}</span>
@@ -1611,7 +1687,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
               </details>
               <div class="actions">
                 <button class="btn primary full" id="run-button" type="submit">Запустить выбранный</button>
-                <button class="btn full" id="queue-all-button" type="button">Поставить весь Inbox</button>
+                <button class="btn full" id="queue-all-button" type="button">Выбрать несколько файлов</button>
                 <button class="btn ghost" id="refresh-button" type="button">Обновить</button>
               </div>
             </div>
@@ -1679,6 +1755,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     const uploadStatus = document.querySelector("#upload-status");
     const fileCountNode = document.querySelector("#file-count");
     const sourceSelect = document.querySelector("#source-select");
+    const engineSelect = document.querySelector('select[name="asr_engine"]');
+    engineSelect.addEventListener("change", () => {{
+      const status = JSON.parse(engineSelect.selectedOptions[0].dataset.status);
+      const box = document.querySelector("#asr-runtime-status");
+      box.title = status.title;
+      box.querySelector(".badge").className = `badge ${{status.class}}`;
+      box.querySelector(".badge").textContent = status.label;
+      box.children[1].textContent = status.detail;
+      box.querySelector(".engine-help").textContent = status.help;
+    }});
     const fileList = document.querySelector("#file-list");
     const jobsNode = document.querySelector("#jobs");
     const resultsList = document.querySelector("#results-list");
@@ -1724,10 +1810,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     let diskResults = [];
     let inboxFiles = [];
     let batchSelectedFiles = new Set();
-    let batchKnownFiles = new Set();
-    let batchSelectionReady = false;
     let clipValidationOk = true;
     const speakerNameDrafts = new Map();
+    const voiceBusy = new Set();
+    const voiceMessages = new Map();
+    const voiceSelections = new Map();
+    const speakerFilters = new Map();
     const resultTabDrafts = new Map();
     const previewModeDrafts = new Map();
     const transcriptCache = new Map();
@@ -1741,7 +1829,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
 
     function syncFileSelection() {{
       document.querySelectorAll(".file-row").forEach((row) => {{
-        row.classList.toggle("active", row.dataset.file === sourceSelect.value);
+        row.classList.toggle("active", runMode === "batch" ? batchSelectedFiles.has(row.dataset.file) : row.dataset.file === sourceSelect.value);
       }});
     }}
 
@@ -1750,14 +1838,16 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       modeButtons.forEach((button) => {{
         button.classList.toggle("active", button.dataset.mode === runMode);
       }});
-      runModeLabel.textContent = runMode === "batch" ? "весь Inbox" : runMode === "clip" ? "тест-фрагмент" : "полный файл";
-      runButton.textContent = runMode === "batch" ? "Поставить весь Inbox" : runMode === "clip" ? "Запустить фрагмент" : "Запустить полный файл";
+      runModeLabel.textContent = runMode === "batch" ? "несколько файлов" : runMode === "clip" ? "тест-фрагмент" : "полный файл";
+      runButton.textContent = runMode === "batch" ? "Обработать выбранные" : runMode === "clip" ? "Запустить фрагмент" : "Запустить полный файл";
       queueAllButton.hidden = runMode === "batch";
       clipFields.hidden = runMode !== "clip";
       clipTools.hidden = runMode !== "clip";
       batchTools.hidden = runMode !== "batch";
       fileList.classList.toggle("batch-mode", runMode === "batch");
+      syncFileSelection();
       sourceSelect.disabled = runMode === "batch" || !sourceSelect.options.length;
+      document.querySelector("#single-source-field").hidden = runMode === "batch";
       if (runMode === "clip" && !speakerInputs.exact.form.elements.duration.value.trim()) {{
         speakerInputs.exact.form.elements.start.value = "0";
         speakerInputs.exact.form.elements.duration.value = "2:00";
@@ -1951,7 +2041,6 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       button.addEventListener("click", () => {{
         const names = Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
         batchSelectedFiles = button.dataset.batchAction === "all" ? new Set(names) : new Set();
-        batchSelectionReady = true;
         renderBatchChecks();
         updateBatchSelectionSummary();
       }});
@@ -1984,7 +2073,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       await loadInbox();
       await loadJobs();
     }});
-    queueAllButton.addEventListener("click", () => queueAllJobs());
+    queueAllButton.addEventListener("click", () => {{setRunMode("batch"); fileList.scrollIntoView({{block: "nearest", behavior: "smooth"}});}});
     uploadForm.addEventListener("submit", async (event) => {{
       event.preventDefault();
       await uploadFiles();
@@ -2017,9 +2106,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
 
     async function queueAllJobs() {{
-      const sources = runMode === "batch"
-        ? batchSelectedSources()
-        : Array.from(sourceSelect.options).map((option) => option.value).filter(Boolean);
+      const sources = batchSelectedSources();
       if (!sources.length) {{
         setLogText(runMode === "batch" ? "Выберите хотя бы один файл для пакетной обработки" : "Inbox пуст");
         return;
@@ -2090,6 +2177,23 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }}
     }}
 
+    const sourceSort = document.querySelector("#source-sort");
+    try {{sourceSort.value = localStorage.getItem("diktum-source-sort") || "date-desc";}} catch {{}}
+    if (!sourceSort.value) sourceSort.value = "date-desc";
+    function sortSourceFiles(files) {{
+      const mode = sourceSort.value;
+      return [...files].sort((a, b) => {{
+        const name = a.name.localeCompare(b.name, "ru", {{numeric: true, sensitivity: "base"}});
+        if (mode.startsWith("name")) return mode === "name-asc" ? name : -name;
+        const date = (Number(a.modified_at) || 0) - (Number(b.modified_at) || 0);
+        return (mode === "date-asc" ? date : -date) || name;
+      }});
+    }}
+    sourceSort.addEventListener("change", () => {{
+      try {{localStorage.setItem("diktum-source-sort", sourceSort.value);}} catch {{}}
+      loadInbox();
+    }});
+
     async function loadInbox(preferredSource = null) {{
       let payload;
       try {{
@@ -2100,10 +2204,10 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         showForegroundProblem(error, {{ context: "inbox", statusLabel: "Inbox недоступен" }});
         return;
       }}
-      const files = payload.files || [];
+      const files = sortSourceFiles(payload.files || []);
+      const previous = preferredSource || (inboxFiles.length ? sourceSelect.value : null);
       inboxFiles = files;
       syncBatchSelectionWithFiles(files);
-      const previous = preferredSource || sourceSelect.value;
       sourceSelect.innerHTML = files.map((file) => (
         `<option value="${{escapeAttribute(file.name)}}">${{escapeHtml(file.name)}}</option>`
       )).join("");
@@ -2139,7 +2243,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const checked = batchSelectedFiles.has(file.name) ? " checked" : "";
       return `<div class="file-item">
         <label class="batch-select" title="Включить в пакет">
-          <input class="batch-file-checkbox" type="checkbox" value="${{escapeAttribute(file.name)}}"${{checked}}>
+          <input class="batch-file-checkbox" type="checkbox" aria-label="Выбрать ${{escapeAttribute(file.name)}}" value="${{escapeAttribute(file.name)}}"${{checked}}>
         </label>
         <button class="file-row ${{latest ? "processed" : ""}}" type="button" data-file="${{escapeAttribute(file.name)}}">
           <span class="file-main">
@@ -2166,17 +2270,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     function syncBatchSelectionWithFiles(files) {{
       const names = files.map((file) => file.name);
       const currentNames = new Set(names);
-      if (!batchSelectionReady) {{
-        batchSelectedFiles = new Set(names);
-        batchKnownFiles = currentNames;
-        batchSelectionReady = true;
-        return;
-      }}
       batchSelectedFiles = new Set(Array.from(batchSelectedFiles).filter((name) => currentNames.has(name)));
-      names.forEach((name) => {{
-        if (!batchKnownFiles.has(name)) batchSelectedFiles.add(name);
-      }});
-      batchKnownFiles = currentNames;
     }}
 
     function updateBatchSelectionFromInput(input) {{
@@ -2185,11 +2279,11 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       }} else {{
         batchSelectedFiles.delete(input.value);
       }}
-      batchSelectionReady = true;
       updateBatchSelectionSummary();
     }}
 
     function renderBatchChecks() {{
+      syncFileSelection();
       document.querySelectorAll(".batch-file-checkbox").forEach((input) => {{
         input.checked = batchSelectedFiles.has(input.value);
       }});
@@ -2202,10 +2296,12 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
     }}
 
     function updateBatchSelectionSummary() {{
+      syncFileSelection();
       if (!batchSelectionCount) return;
       const selected = batchSelectedSources().length || batchSelectedFiles.size;
       const total = sourceSelect.options.length;
       batchSelectionCount.textContent = `${{selected}} из ${{total}} выбрано`;
+      if (runMode === "batch") runButton.textContent = selected ? `Обработать выбранные (${{selected}})` : "Выберите файлы в источниках";
       updateRunAvailability();
     }}
 
@@ -2466,6 +2562,79 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       </button>`;
     }}
 
+    function renderSpeakerProposal(job, sample) {{
+      const row = (job.voice_suggestions?.rows || []).find(row => String(row.speaker) === String(sample.speaker));
+      if (row?.status === "suggested") return `<label class="voice-match speaker-proposal"><input type="checkbox" data-voice-speaker="${{escapeAttribute(row.speaker)}}" ${{voiceSelections.get(`${{job.id}}:${{row.speaker}}`) === false ? "" : "checked"}}>Похож на: ${{escapeHtml(row.name)}}</label>`;
+      if (sample.name) return '<span class="speaker-note">Имя сохранено</span>';
+      if (row) return `<span class="speaker-note">${{escapeHtml(row.reason || "Нет уверенного совпадения")}}</span>`;
+      return "";
+    }}
+
+    function renderVoiceProfiles(job) {{
+      const profiles = job.voice_profiles || [];
+      const rows = job.voice_suggestions?.rows || [];
+      const busy = voiceBusy.has(job.id);
+      const choices = rows.filter(r => r.status === "suggested");
+      return `<div class="voice-panel">
+        <h3>Знакомые голоса</h3>
+        <div class="result-meta">${{profiles.length ? profiles.map(p => escapeHtml(p.name)).join(" · ") : "Примените имя спикера и нажмите «Запомнить голос»."}}</div>
+        <p class="result-meta">${{choices.length ? `Найдено совпадений: ${{choices.length}}. Проверьте имена у спикеров ниже.` : "Сравните голоса с сохранёнными профилями."}}</p>
+        <div class="actions">
+          <button class="btn secondary" data-voice-action="suggest" type="button" ${{busy || !profiles.length ? "disabled" : ""}}>Узнать голоса</button>
+          ${{choices.length ? `<button class="btn primary" data-voice-action="confirm" type="button" ${{busy ? "disabled" : ""}}>Подтвердить выбранные имена</button>` : ""}}
+        </div>
+        <p class="result-meta" role="status">${{escapeHtml(voiceMessages.get(job.id) || "Предложения применяются после вашего подтверждения.")}}</p>
+        <details><summary>Профили голосов (${{profiles.length}})</summary>
+          ${{profiles.map(p => `<div class="voice-match"><span>${{escapeHtml(p.name)}} · записей: ${{p.recordings}}</span><button class="btn secondary" data-forget-profile="${{escapeAttribute(p.id)}}" type="button" ${{busy ? "disabled" : ""}}>Забыть</button></div>`).join("")}}
+        </details>
+      </div>`;
+    }}
+
+    function wireVoiceProfiles(job) {{
+      document.querySelectorAll("[data-voice-speaker]").forEach(input => input.addEventListener("change", () => {{
+        voiceSelections.set(`${{job.id}}:${{input.dataset.voiceSpeaker}}`, input.checked);
+      }}));
+      const run = async (action, data = {{}}, method = "POST") => {{
+        if (voiceBusy.has(job.id)) return;
+        voiceBusy.add(job.id);
+        voiceMessages.set(job.id, action === "suggest" ? "Сравниваю голоса локально…" : "Сохраняю…");
+        renderResults(job, {{force: true}});
+        try {{
+          const response = await fetch(`/api/voice-profiles/${{action}}`, {{
+            method, headers: {{"Content-Type": "application/json"}},
+            ...(method === "POST" ? {{body: JSON.stringify({{result_id: job.id, ...data}})}} : {{}}),
+          }});
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "Не удалось выполнить действие");
+          voiceMessages.set(job.id, action === "suggest" ? "Сравнение завершено." : action === "confirm" ? "Имена применены к Markdown и другим результатам." : "Профили обновлены.");
+          if (action === "confirm") {{clearSpeakerNameDrafts(job.id); clearTranscriptCache(job.files || []);}}
+        }} catch (error) {{
+          voiceMessages.set(job.id, error.message);
+        }} finally {{
+          voiceBusy.delete(job.id);
+          renderedResultKey = null;
+          await loadJobs();
+          await loadResults(job.is_disk_result && activeView === "result" && activeResultId === job.id ? job.id : null);
+        }}
+      }};
+      document.querySelectorAll("[data-voice-action]").forEach(button => button.addEventListener("click", () => {{
+        const action = button.dataset.voiceAction;
+        const speakers = Array.from(document.querySelectorAll("[data-voice-speaker]:checked")).map(i => i.dataset.voiceSpeaker);
+        run(action, action === "confirm" ? {{speakers, revision: job.voice_suggestions?.revision}} : {{}});
+      }}));
+      document.querySelectorAll("[data-enroll-speaker]").forEach(button => {{
+        button.disabled = voiceBusy.has(job.id);
+        button.addEventListener("click", () => {{
+          const speaker = button.dataset.enrollSpeaker;
+          const input = Array.from(document.querySelectorAll(".speaker-name-input")).find(i => i.dataset.speaker === speaker);
+          run("enroll", {{speaker, name: input?.value || ""}});
+        }});
+      }});
+      document.querySelectorAll("[data-forget-profile]").forEach(button => button.addEventListener("click", () => {{
+        if (confirm("Забыть этот профиль голоса? Имена в готовых текстах сохранятся.")) run(button.dataset.forgetProfile, {{}}, "DELETE");
+      }}));
+    }}
+
     function renderResults(job, options = {{}}) {{
       const key = resultRenderKey(job);
       if (!options.force && key === renderedResultKey) return;
@@ -2484,18 +2653,23 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const fileLinks = renderExportGroups(files);
       const activeTab = resultTab(job.id);
       const previewMode = transcriptPreviewMode(job.id);
+      const namedCount = samples.filter(sample => sample.name).length;
       const speakerRows = samples.length
-        ? samples.map((sample) => `<div class="speaker-row">
-            <span class="badge">${{escapeHtml(sample.label)}}</span>
-            <audio controls preload="metadata" src="${{sample.url}}"></audio>
-            <input class="speaker-name-input" data-job="${{escapeAttribute(job.id)}}" data-speaker="${{escapeAttribute(sample.speaker)}}" value="${{escapeAttribute(speakerNameValue(job, sample))}}" placeholder="Имя спикера ${{sample.speaker}}">
+        ? samples.map((sample) => `<div class="speaker-row" data-speaker-card="${{escapeAttribute(sample.speaker)}}" data-named="${{sample.name ? "yes" : "no"}}">
+            <strong class="speaker-heading">Спикер ${{escapeHtml(sample.speaker)}}</strong>
+            <audio controls aria-label="Голос спикера ${{escapeAttribute(sample.speaker)}}" preload="metadata" src="${{sample.url}}"></audio>
+            ${{renderSpeakerProposal(job, sample)}}
+            <label class="speaker-name-field">Имя
+            <input class="speaker-name-input" data-job="${{escapeAttribute(job.id)}}" data-speaker="${{escapeAttribute(sample.speaker)}}" value="${{escapeAttribute(speakerNameValue(job, sample))}}" placeholder="Имя спикера ${{sample.speaker}}"></label>
+            ${{sample.name ? `<button class="btn secondary" type="button" data-enroll-speaker="${{escapeAttribute(sample.speaker)}}">Запомнить голос</button>` : ""}}
           </div>`).join("")
-        : '<div class="empty">Voice samples пока не найдены</div>';
+        : '<div class="empty">Образцы голосов пока не найдены</div>';
       const speakerActions = `<div class="actions">
         <button class="btn primary" id="apply-speaker-names" type="button">Применить имена</button>
       </div>`;
       resultDetails.innerHTML = `
         <div class="result-meta">${{jobBadges(job)}}${{renderRerunAction(job)}}${{renderJobManagementActions(job)}}</div>
+        <div class="result-folder-actions"><button class="btn secondary" id="reveal-result-folder" type="button">Перейти в папку</button><span id="reveal-folder-status" class="result-meta" role="status"></span></div>
         ${{renderResultTabs(activeTab)}}
         <section class="result-panel" data-result-panel="overview" ${{activeTab === "overview" ? "" : "hidden"}}>
           ${{renderResultOverview(job, files, samples)}}
@@ -2504,8 +2678,14 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
           ${{renderTextPreviewShell(files, previewMode)}}
         </section>
         <section class="result-panel" data-result-panel="speakers" ${{activeTab === "speakers" ? "" : "hidden"}}>
+          ${{renderVoiceProfiles(job)}}
+          <div class="speaker-toolbar">
+            <span class="result-meta">Имена: ${{namedCount}} из ${{samples.length}}</span>
+            <label>Показать <select id="speaker-filter"><option value="all">Всех спикеров</option><option value="unnamed">Без имени</option></select></label>
+          </div>
           <div class="speaker-editor">
             ${{speakerRows}}
+            <p id="speaker-filter-empty" class="result-meta" hidden>Все спикеры уже подписаны.</p>
             ${{speakerActions}}
           </div>
         </section>
@@ -2517,6 +2697,32 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       loadTranscriptPreview(job, files);
       wireRerunAction(job);
       wireJobManagementActions(job);
+      wireVoiceProfiles(job);
+      const speakerFilter = document.querySelector("#speaker-filter");
+      speakerFilter.value = speakerFilters.get(job.id) || "all";
+      const filterSpeakers = () => {{
+        speakerFilters.set(job.id, speakerFilter.value);
+        let visible = 0;
+        document.querySelectorAll("[data-speaker-card]").forEach(row => {{
+          row.hidden = speakerFilter.value === "unnamed" && row.dataset.named === "yes";
+          if (!row.hidden) visible++;
+        }});
+        document.querySelector("#speaker-filter-empty").hidden = visible > 0 || !samples.length;
+      }};
+      speakerFilter.addEventListener("change", filterSpeakers);
+      filterSpeakers();
+      document.querySelector("#reveal-result-folder").addEventListener("click", async (event) => {{
+        const button = event.currentTarget;
+        const status = document.querySelector("#reveal-folder-status");
+        button.disabled = true;
+        try {{
+          const response = await fetch("/api/results/reveal", {{method: "POST", headers: {{"Content-Type": "application/json"}}, body: JSON.stringify({{result_id: job.id}})}});
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "Не удалось открыть папку");
+          status.textContent = "Папка открыта в Finder";
+        }} catch (error) {{status.textContent = error.message;}}
+        finally {{button.disabled = false;}}
+      }});
       const applyButton = document.querySelector("#apply-speaker-names");
       if (applyButton) {{
         applyButton.addEventListener("click", async () => {{
@@ -2830,7 +3036,7 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
       const samples = (job.speaker_samples || [])
         .map((sample) => `${{sample.speaker}}=${{sample.url}}:${{sample.label}}:${{sample.name || ""}}`)
         .join("|");
-      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{job.source_status || ""}}:${{qualityRenderKey(job)}}:${{files}}:${{samples}}`;
+      return `${{job.id}}:${{job.status}}:${{jobMeta(job)}}:${{job.source_status || ""}}:${{qualityRenderKey(job)}}:${{files}}:${{samples}}:${{JSON.stringify(job.voice_suggestions)}}:${{JSON.stringify(job.voice_profiles)}}:${{voiceBusy.has(job.id)}}:${{voiceMessages.get(job.id) || ""}}`;
     }}
 
     function jobBadges(job) {{
@@ -3640,7 +3846,7 @@ def _create_job(
     overwrite: bool,
     root: Path,
 ) -> Job:
-    suffix = _clip_suffix(start, duration)
+    suffix = _clip_suffix(start, duration) + artifact_suffix(asr_engine)
     markdown_path = output_dir / f"{safe_stem(source)}{suffix}.transcript.md"
     manifest_path = output_dir / f"{safe_stem(source)}{suffix}.manifest.json"
     source_arg = _cli_path(root, source)
@@ -4035,6 +4241,39 @@ def _result_list(root: Path) -> list[dict[str, object]]:
     return results
 
 
+def _voice_manifest(identifier: str, root: Path) -> Path:
+    if identifier.startswith("result-"):
+        path = _find_result_manifest(identifier, root)
+        with JOBS_LOCK:
+            if any(j.manifest_path.resolve() == path.resolve() and j.status in {"queued", "running", "canceling"} for j in JOBS.values()):
+                raise ValueError("Дождитесь завершения обработки этого результата.")
+        return path
+    with JOBS_LOCK:
+        job = JOBS.get(identifier)
+        if job is None or job.status != "done":
+            raise ValueError("Выберите завершённую обработку.")
+        return job.manifest_path
+
+
+def _reveal_result_folder(identifier: str, root: Path) -> None:
+    """Only reveal a server-resolved result directory, never a client-supplied path."""
+    manifest = _voice_manifest(identifier, root).resolve()
+    if not manifest.is_relative_to((root / "outputs").resolve()) or not manifest.is_file():
+        raise ValueError("Папка результата недоступна.")
+    if sys.platform != "darwin":
+        raise ValueError("Открытие папки поддерживается на macOS.")
+    subprocess.run(["/usr/bin/open", str(manifest.parent)], check=True, timeout=10,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _voice_payload(manifest_path: Path, root: Path) -> dict:
+    from voice_recognizer.voice_profiles import profile_summary, saved_suggestions
+    try:
+        return {"voice_profiles": profile_summary(root), "voice_suggestions": saved_suggestions(root, manifest_path)}
+    except (ValueError, OSError):
+        return {"voice_profiles": [], "voice_suggestions": None}
+
+
 def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None:
     manifest = _read_manifest(manifest_path)
     if not manifest:
@@ -4084,6 +4323,7 @@ def _result_payload(manifest_path: Path, root: Path) -> dict[str, object] | None
         "kind": "clip" if clip_duration is not None else "full",
         "manifest_url": _output_url(root, manifest_path),
         "is_disk_result": True,
+        **_voice_payload(manifest_path, root),
         **source_freshness,
     }
 
@@ -4189,6 +4429,7 @@ def _job_payload(job: Job, root: Path) -> dict[str, object]:
         "files": files,
         "speaker_samples": samples,
         "speaker_names": manifest.get("speaker_names", {}),
+        **_voice_payload(job.manifest_path, root),
     }
 
 
@@ -4206,7 +4447,9 @@ def _apply_speaker_names(job_id: str, speaker_names: str, root: Path) -> Job:
         job.log.append("Applying speaker names without rerunning ASR/diarization\n")
         _save_jobs_locked(root)
     try:
-        outputs = rewrite_manifest_exports(job.manifest_path, speaker_names=parse_speaker_names(speaker_names))
+        from voice_recognizer.voice_profiles import result_lock
+        with result_lock(root, job.manifest_path):
+            outputs = rewrite_manifest_exports(job.manifest_path, speaker_names=parse_speaker_names(speaker_names))
     except Exception as error:
         with JOBS_LOCK:
             job = JOBS[job_id]
@@ -4235,7 +4478,9 @@ def _apply_result_speaker_names(result_id: str, speaker_names: str, root: Path) 
     from voice_recognizer.cli import parse_speaker_names, rewrite_manifest_exports
 
     manifest_path = _find_result_manifest(result_id, root)
-    outputs = rewrite_manifest_exports(manifest_path, speaker_names=parse_speaker_names(speaker_names))
+    from voice_recognizer.voice_profiles import result_lock
+    with result_lock(root, manifest_path):
+        outputs = rewrite_manifest_exports(manifest_path, speaker_names=parse_speaker_names(speaker_names))
     payload = _result_payload(manifest_path, root)
     if payload is None:
         raise ValueError("result manifest disappeared")
@@ -4390,6 +4635,7 @@ def _inbox_file_payload(path: Path, results: list[dict[str, object]] | None = No
         "duration_label": metadata.get("duration_label"),
         "format_label": metadata.get("format_label"),
         "modified_label": metadata.get("modified_label"),
+        "modified_at": stat.st_mtime,
         "processed": bool(result_summaries),
         "results": result_summaries,
     }
@@ -4784,17 +5030,27 @@ def _file_size_label(path: Path) -> str:
     return f"{size:.1f} GB"
 
 
-def _render_asr_engine_option(value: str, label: str, available: bool) -> str:
-    selected = " selected" if value == DEFAULT_ASR_ENGINE else ""
+def _render_asr_engine_option(value: str, label: str, available: bool, *, selected_engine: str = DEFAULT_ASR_ENGINE,
+                             status: dict[str, str] | None = None) -> str:
+    selected = " selected" if value == selected_engine else ""
     disabled = "" if available else " disabled"
-    suffix = "" if available else " (скоро)"
+    suffix = "" if available else " (не настроен)"
+    status_attribute = html.escape(json.dumps(status or {}), quote=True)
     return (
-        f'<option value="{html.escape(value)}"{selected}{disabled}>'
+        f'<option value="{html.escape(value)}" data-status="{status_attribute}"{selected}{disabled}>'
         f"{html.escape(label + suffix)}</option>"
     )
 
 
-def _asr_runtime_status(root: Path) -> dict[str, str]:
+def _asr_runtime_status(root: Path, engine: str | None = None) -> dict[str, str]:
+    if (engine or configured_default(root)) == CTC_ENGINE:
+        from voice_recognizer.handy_ctc import availability
+        ready, message = availability()
+        return {"class": "done" if ready else "failed",
+                "label": "GigaAM CTC готов" if ready else "GigaAM CTC не настроен",
+                "detail": "Модель и обработка спектра как в Handy",
+                "help": "Локально, короткими фрагментами. RNNT доступен в списке для сравнения." if ready else message,
+                "title": message}
     gigastt_bin = root / "tools" / "bin" / "gigastt"
     model_dir = root / ".models" / "gigastt"
     required = [

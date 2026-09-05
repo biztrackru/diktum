@@ -20,7 +20,7 @@ from voice_recognizer.diarization import (
     run_pyannote,
     write_diarization_json,
 )
-from voice_recognizer.engines import ASR_ENGINE_LABELS, DEFAULT_ASR_ENGINE, normalize_asr_engine
+from voice_recognizer.engines import ASR_ENGINE_LABELS, DEFAULT_ASR_ENGINE, CTC_ENGINE, artifact_suffix, normalize_asr_engine
 from voice_recognizer.formatting import TranscriptSegment, write_markdown
 from voice_recognizer.gigastt import (
     GigasttError,
@@ -1013,21 +1013,43 @@ def _run_pipeline_to_outputs(
     asr_engine = normalize_asr_engine(asr_engine)
     created_at = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{safe_stem(source)}{_clip_suffix(start, duration)}"
+    stem = f"{safe_stem(source)}{_clip_suffix(start, duration)}{artifact_suffix(asr_engine)}"
     audio_path = cache_dir / f"{stem}.wav"
     asr_json = output_dir / f"{stem}.gigastt.json"
     diarization_json = output_dir / f"{stem}.pyannote.json"
     manifest_json = output_dir / f"{stem}.manifest.json"
     speaker_names = speaker_names or {}
+    if asr_engine == CTC_ENGINE:
+        from voice_recognizer.handy_ctc import availability
+        ready, message = availability()
+        if not ready:
+            raise GigasttError(message)
+        if hotwords_file is not None or hotwords_default:
+            console.print("[yellow]GigaAM CTC uses its own vocabulary; RNNT hotwords are not applied.[/yellow]")
+        hotwords_file, hotwords_default = None, False
     if hotwords_file is not None:
         console.print(f"[cyan]ASR hotwords:[/cyan] {hotwords_file}")
     if hotwords_default:
         console.print("[cyan]ASR hotwords:[/cyan] built-in default lexicon enabled")
 
+    prepared_identity = None
+    if asr_engine == CTC_ENGINE:
+        stat = source.stat()
+        prepared_identity = {"path": str(source.resolve()), "size": stat.st_size,
+                             "mtime_ns": stat.st_mtime_ns, "start": start, "duration": duration}
+        identity_path = audio_path.with_suffix(".source.json")
+        try:
+            if json.loads(identity_path.read_text()) != prepared_identity:
+                skip_existing = False
+        except (OSError, ValueError):
+            skip_existing = False
     if skip_existing and audio_path.exists():
         console.print(f"[yellow]Using prepared audio:[/yellow] {audio_path}")
     else:
         normalize_audio(source, audio_path, start=start, duration=duration)
+        if prepared_identity is not None:
+            from voice_recognizer.handy_ctc import atomic_json
+            atomic_json(identity_path, prepared_identity)
         console.print(f"[green]Prepared audio:[/green] {audio_path}")
 
     prepared_audio_duration = probe_audio(audio_path).duration_seconds
@@ -1042,7 +1064,18 @@ def _run_pipeline_to_outputs(
         hotwords_default=hotwords_default,
         chunk_seconds=expected_asr_chunk_seconds,
     )
-    if skip_existing and asr_json.exists() and asr_json_current:
+    if asr_engine == CTC_ENGINE:
+        from voice_recognizer.handy_ctc import transcribe
+        console.print(f"[cyan]ASR engine:[/cyan] {ASR_ENGINE_LABELS[asr_engine]}")
+        try:
+            engine_seconds = transcribe(audio_path, asr_json, cache_dir,
+                                        skip_existing=skip_existing, progress=_log_pipeline_progress)
+        except GigasttError:
+            raise
+        except Exception as error:
+            raise GigasttError(f"Local GigaAM CTC failed: {error}") from error
+        console.print(f"[green]ASR JSON:[/green] {asr_json}")
+    elif skip_existing and asr_json.exists() and asr_json_current:
         console.print(f"[yellow]Using ASR JSON:[/yellow] {asr_json}")
     else:
         if skip_existing and asr_json.exists() and not asr_json_current:
@@ -1175,6 +1208,15 @@ def _run_pipeline_to_outputs(
     console.print(f"[green]Clean Markdown:[/green] {outputs['clean_markdown']}")
     console.print(f"[green]Clean TXT:[/green] {outputs['clean_text']}")
     console.print(f"[green]Manifest:[/green] {manifest_json}")
+    from voice_recognizer.voice_profiles import read_bank, suggest
+    try:
+        if read_bank(Path.cwd())["profiles"]:
+            console.print("[cyan]Voice profiles:[/cyan] preparing local name suggestions")
+            suggest(Path.cwd(), manifest_json)
+            console.print("[green]Voice profiles:[/green] suggestions ready for confirmation")
+    except Exception as error:
+        # An optional suggestion must never fail an otherwise completed transcript.
+        console.print(f"[yellow]Voice profiles: {error}. Use 'Узнать голоса' in the speaker tab.[/yellow]")
     return PipelineOutputs(
         asr_json=asr_json,
         diarization_json=diarization_json,
@@ -1391,9 +1433,9 @@ def process_file(
     hotwords_file: Path | None = typer.Option(None, "--hotwords-file"),
     hotwords_default: bool = typer.Option(False, "--hotwords-default"),
     asr_engine: str = typer.Option(
-        DEFAULT_ASR_ENGINE,
+        "auto",
         "--asr-engine",
-        help="ASR backend. Currently supported: gigastt-gigaam-v3.",
+        help="auto uses the local preference; gigastt-gigaam-v3 or handy-gigaam-v3-e2e-ctc.",
     ),
     pyannote_model_id: str = typer.Option("pyannote/speaker-diarization-community-1", "--pyannote-model-id"),
     hf_token_env: str = typer.Option("HF_TOKEN", "--hf-token-env"),
@@ -1477,6 +1519,37 @@ def process_file(
         f"{outputs.speaker_count} speakers. ASR: {_seconds_label(outputs.engine_seconds)}, "
         f"diarization: {_seconds_label(outputs.diarization_seconds)}.[/cyan]"
     )
+
+
+@app.command("voice-profiles")
+def list_voice_profiles() -> None:
+    """List local confirmed speaker profiles (no audio or embeddings displayed)."""
+    from voice_recognizer.voice_profiles import profile_summary
+    console.print_json(data={"profiles": profile_summary(Path.cwd())})
+
+
+@app.command("voice-profile-enroll")
+def enroll_voice_profile(
+    manifest: Path = typer.Argument(..., exists=True, dir_okay=False),
+    speaker: str = typer.Option(..., "--speaker"),
+    name: str = typer.Option(..., "--name"),
+) -> None:
+    """Save a voice with an already user-confirmed name from a result."""
+    from voice_recognizer.voice_profiles import enroll
+    try:
+        console.print_json(data=enroll(Path.cwd(), manifest, speaker, name))
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+@app.command("voice-profile-suggest")
+def suggest_voice_profiles(manifest: Path = typer.Argument(..., exists=True, dir_okay=False)) -> None:
+    """Prepare speaker name suggestions without changing the transcript."""
+    from voice_recognizer.voice_profiles import suggest
+    try:
+        console.print_json(data=suggest(Path.cwd(), manifest))
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
 
 
 @app.command("refresh-quality")
@@ -1769,9 +1842,9 @@ def batch_process(
     hotwords_file: Path | None = typer.Option(None, "--hotwords-file"),
     hotwords_default: bool = typer.Option(False, "--hotwords-default"),
     asr_engine: str = typer.Option(
-        DEFAULT_ASR_ENGINE,
+        "auto",
         "--asr-engine",
-        help="ASR backend. Currently supported: gigastt-gigaam-v3.",
+        help="auto uses the local preference; gigastt-gigaam-v3 or handy-gigaam-v3-e2e-ctc.",
     ),
     pyannote_model_id: str = typer.Option("pyannote/speaker-diarization-community-1", "--pyannote-model-id"),
     hf_token_env: str = typer.Option("HF_TOKEN", "--hf-token-env"),

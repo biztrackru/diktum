@@ -23,6 +23,7 @@ tests/
 .agents/runs/
 .agents/tmp/
 .local-quality/
+.voice-profiles/
 *.docx
 !docs/**/*.docx
 ~$*.docx
