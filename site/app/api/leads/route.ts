@@ -1,7 +1,7 @@
 import { markLeadNotified, upsertLead } from "./storage";
 
 const DEFAULT_DOWNLOAD_URL =
-  "https://github.com/biztrackru/diktum/releases/download/v0.1.0-alpha.1/diktum-v0.1.0-alpha.1-macos.zip";
+  "https://github.com/biztrackru/diktum/releases/download/v0.2.0-alpha.2/diktum-v0.2.0-alpha.2-macos.zip";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 

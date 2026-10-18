@@ -14,6 +14,10 @@ PACK_NAME="Диктум $PACK_LABEL $PACK_VERSION"
 PACK_DIR="$DIST_DIR/$PACK_NAME"
 ARCHIVE="$DIST_DIR/$PACK_NAME.zip"
 GIT_COMMIT="$(git -C "$WORKSPACE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+SOURCE_STATE="clean"
+if ! git -C "$WORKSPACE_DIR" diff --quiet 2>/dev/null; then
+  SOURCE_STATE="working-tree changes"
+fi
 
 cd "$WORKSPACE_DIR" || exit 1
 
@@ -109,6 +113,10 @@ write_version_file() {
 ======================
 
 Build ID: $PACK_VERSION-$GIT_COMMIT
+Source state: $SOURCE_STATE
+Requires: macOS 14+, Apple Silicon, Python 3.12
+Python lock SHA-256: $(shasum -a 256 "$APP_DIR/requirements-macos-arm64-py312.lock" | awk '{print $1}')
+Resource catalog SHA-256: $(shasum -a 256 "$APP_DIR/config/resources.json" | awk '{print $1}')
 
 Runtime data is local to the unpacked folder and is not part of this build:
 .env, .venv, .models, .cache, tools/bin, Inbox contents, outputs and logs.
@@ -183,6 +191,7 @@ copy_file "Запустить Диктум.command" "$PACK_DIR/Запустит�
 copy_file "Остановить Диктум.command" "$PACK_DIR/Остановить Диктум.command"
 
 copy_file "app/pyproject.toml" "$PACK_DIR/app/pyproject.toml"
+copy_file "app/requirements-macos-arm64-py312.lock" "$PACK_DIR/app/requirements-macos-arm64-py312.lock"
 copy_file "app/.env.example" "$PACK_DIR/app/.env.example"
 copy_dir "app/src" "$PACK_DIR/app/src"
 copy_file "app/scripts/doctor_local_mac.sh" "$PACK_DIR/app/scripts/doctor_local_mac.sh"
@@ -192,6 +201,8 @@ copy_file "app/scripts/start_server.sh" "$PACK_DIR/app/scripts/start_server.sh"
 copy_file "app/scripts/stop_server.sh" "$PACK_DIR/app/scripts/stop_server.sh"
 copy_file "app/scripts/unblock_macos.sh" "$PACK_DIR/app/scripts/unblock_macos.sh"
 mkdir -p "$PACK_DIR/app/config"
+copy_file "app/config/resources.json" "$PACK_DIR/app/config/resources.json"
+copy_file "app/config/THIRD_PARTY.md" "$PACK_DIR/app/config/THIRD_PARTY.md"
 copy_file "app/config/speaker-counts.example.json" "$PACK_DIR/app/config/speaker-counts.json"
 copy_file "app/config/hotwords.example.txt" "$PACK_DIR/app/config/hotwords.example.txt"
 

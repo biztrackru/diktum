@@ -113,7 +113,7 @@ python_is_compatible() {
   "$python_bin" - <<'PY'
 import sys
 version = sys.version_info[:2]
-raise SystemExit(0 if (3, 10) <= version < (3, 13) else 1)
+raise SystemExit(0 if version == (3, 12) else 1)
 PY
 }
 
@@ -184,7 +184,7 @@ check_python() {
       ok "Python version is compatible: $version"
     else
       fail "Python version is not compatible: $version"
-      next_step "Use Python 3.10-3.12. The setup can install Python 3.12 via Homebrew."
+      next_step "Use Python 3.12. The setup can install it via Homebrew."
     fi
   fi
 
@@ -206,7 +206,7 @@ check_python_packages() {
     return
   fi
 
-  local packages=(typer rich numpy pyannote.audio)
+  local packages=(typer rich numpy onnxruntime torch torchcodec pyannote.audio)
   local report_file="$LOG_DIR/python-packages.$$"
   rm -f "$report_file"
   if ! "$VENV_PYTHON" - "${packages[@]}" > "$report_file" 2>/dev/null <<'PY'

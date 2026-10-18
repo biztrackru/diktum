@@ -159,15 +159,19 @@ class Embedder:
         warnings.filterwarnings("ignore", category=UserWarning, module="pyannote.audio.core.io")
         try:
             from huggingface_hub import hf_hub_download
-            checkpoint = Path(hf_hub_download(MODEL_REPO, "embedding/pytorch_model.bin", local_files_only=True))
+            from voice_recognizer.diarization import COMMUNITY_REVISION
+            checkpoint = Path(hf_hub_download(MODEL_REPO, "embedding/pytorch_model.bin",
+                revision=COMMUNITY_REVISION, local_files_only=True))
             import torch
+            from voice_recognizer.runtime_identity import disable_onnx_telemetry
+            disable_onnx_telemetry()
             from pyannote.audio.pipelines.speaker_verification import PyannoteAudioPretrainedSpeakerEmbedding
             from voice_recognizer.handy_ctc import file_digest
             self.model_id = file_digest(checkpoint)
             self.torch = torch
             self.model = PyannoteAudioPretrainedSpeakerEmbedding(str(checkpoint), device=torch.device("cpu"))
         except Exception as error:
-            raise ValueError("Локальная модель голосов недоступна. Сначала выполните обычную обработку со спикерами, чтобы подготовить pyannote.") from error
+            raise ValueError("Локальная модель голосов недоступна. Запустите Настроить Диктум.command и подготовьте модель спикеров.") from error
 
     def extract(self, audio: Path, windows: list[tuple[float, float]]) -> list[list[float]]:
         import numpy as np

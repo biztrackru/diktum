@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
 from voice_recognizer.audio import SUPPORTED_MEDIA_EXTENSIONS, iter_media_files, safe_stem
-from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, CTC_ENGINE, artifact_suffix, configured_default, normalize_asr_engine
+from voice_recognizer.engines import ASR_ENGINE_CHOICES, DEFAULT_ASR_ENGINE, CTC_ENGINE, E2E_RNNT_ENGINE, artifact_suffix, configured_default, normalize_asr_engine
 from voice_recognizer.multipart import FilePart, MultipartError, stream_form_files
 
 
@@ -409,7 +409,9 @@ class VoiceRecognizerHandler(BaseHTTPRequestHandler):
         selected_engine = configured_default(self.web_config.root)
         asr_options = "\n".join(
             _render_asr_engine_option(choice.value, choice.label,
-                                     choice.available and (choice.value != CTC_ENGINE or ctc_ready),
+                                     choice.available and (choice.value != CTC_ENGINE or ctc_ready)
+                                     and (choice.value != E2E_RNNT_ENGINE or
+                                          _asr_runtime_status(self.web_config.root, choice.value)["class"] == "done"),
                                      selected_engine=selected_engine,
                                      status=_asr_runtime_status(self.web_config.root, choice.value))
             for choice in ASR_ENGINE_CHOICES
@@ -5043,12 +5045,23 @@ def _render_asr_engine_option(value: str, label: str, available: bool, *, select
 
 
 def _asr_runtime_status(root: Path, engine: str | None = None) -> dict[str, str]:
+    if (engine or configured_default(root)) == E2E_RNNT_ENGINE:
+        ready = ((root / "tools/bin/gigastt").is_file() and all(
+            (root / ".models/gigastt-e2e" / name).is_file() for name in (
+                "v3_e2e_rnnt_encoder_int8.onnx", "v3_e2e_rnnt_decoder.onnx",
+                "v3_e2e_rnnt_joint.onnx", "v3_e2e_rnnt_vocab.txt")))
+        return {"class": "done" if ready else "failed",
+                "label": "GigaAM e2e RNNT готов" if ready else "GigaAM e2e RNNT не установлен",
+                "detail": "Локальная модель со встроенной пунктуацией",
+                "help": "Доступен для сравнения с CTC и RNNT." if ready else
+                        "Установите модель: .venv/bin/python -m voice_recognizer.assets install e2e-rnnt",
+                "title": "GigaSTT / GigaAM v3 e2e RNNT"}
     if (engine or configured_default(root)) == CTC_ENGINE:
         from voice_recognizer.handy_ctc import availability
         ready, message = availability()
         return {"class": "done" if ready else "failed",
                 "label": "GigaAM CTC готов" if ready else "GigaAM CTC не настроен",
-                "detail": "Модель и обработка спектра как в Handy",
+                "detail": "Локальная модель GigaAM и Silero VAD",
                 "help": "Локально, короткими фрагментами. RNNT доступен в списке для сравнения." if ready else message,
                 "title": message}
     gigastt_bin = root / "tools" / "bin" / "gigastt"

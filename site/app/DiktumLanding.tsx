@@ -14,7 +14,7 @@ const copy = {
     brand: "Диктум",
     nav: ["Как работает", "Приватность", "Установка"],
     navDownload: "Скачать",
-    heroEyebrow: "Локально на Mac · Точно на русском · Альфа",
+    heroEyebrow: "Диктум v0.2.0-alpha.2 · Локально на Mac · Альфа",
     heroTitle: "Длинные записи — в точные протоколы обсуждений.",
     heroText:
       "Точное распознавание русской речи с пунктуацией, разделение реплик по спикерам и готовый протокол. На вашем Mac, без облака, без подписки, без установки или работы через Terminal.",
@@ -34,6 +34,16 @@ const copy = {
       ["≈30×", "быстрее длины записи"],
       ["0", "аудиофайлов в облаке"],
     ],
+    releaseEyebrow: "Новый релиз",
+    releaseTitle: "Локальные модели — с самостоятельной установкой и проверкой",
+    releaseText:
+      "Релиз v0.2.0-alpha.2 обновляет установку и модели распознавания. Для Mac на Apple Silicon с macOS 14 или новее.",
+    releaseItems: [
+      ["CTC без Handy", "Настройка Диктума сама скачивает необходимые модели и проверяет их целостность. После настройки речь обрабатывается локально."],
+      ["Обновлённое распознавание", "Обновлены GigaSTT и модели RNNT. Дополнительный e2e RNNT-режим можно установить отдельно и сравнить на своих записях."],
+      ["Проверяемая установка", "Версии зависимостей закреплены, загрузки проверяются по SHA-256, заменяемые ресурсы сохраняются в резервной копии. Телеметрия библиотек отключена."],
+    ],
+    releaseLink: "Все изменения в GitHub Release",
     storyEyebrow: "Зачем это",
     storyTitle: "Не просто текст — точный протокол, с которым можно работать",
     storyText: [
@@ -123,7 +133,7 @@ const copy = {
     brand: "Diktum",
     nav: ["How it works", "Privacy", "Install"],
     navDownload: "Download",
-    heroEyebrow: "Local on Mac · Accurate in Russian · Alpha",
+    heroEyebrow: "Diktum v0.2.0-alpha.2 · Local on Mac · Alpha",
     heroTitle: "Long recordings into accurate discussion protocols.",
     heroText:
       "Accurate Russian speech recognition with punctuation, speaker separation, and a ready protocol. On your Mac, with no cloud, no subscription, and no Terminal install or Terminal workflow.",
@@ -143,6 +153,16 @@ const copy = {
       ["about 30x", "faster than real time"],
       ["0", "audio files in the cloud"],
     ],
+    releaseEyebrow: "New release",
+    releaseTitle: "Local models with independent setup and verification",
+    releaseText:
+      "v0.2.0-alpha.2 updates setup and speech recognition models. For Apple Silicon Macs running macOS 14 or later.",
+    releaseItems: [
+      ["CTC without Handy", "Diktum setup downloads the required models and verifies their integrity. Speech processing stays local after setup."],
+      ["Updated recognition", "GigaSTT and RNNT models have been updated. An additional e2e RNNT mode can be installed separately to compare on your recordings."],
+      ["Verifiable setup", "Dependency versions are pinned, downloads are checked with SHA-256, and replaced resources are backed up. Library telemetry is disabled."],
+    ],
+    releaseLink: "Full GitHub Release notes",
     storyEyebrow: "Why",
     storyTitle: "Not just text, but an accurate protocol you can work with",
     storyText: [
@@ -395,6 +415,28 @@ export default function DiktumLanding() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="section release-section" aria-labelledby="release-title">
+        <p className="eyebrow">{t.releaseEyebrow}</p>
+        <h2 id="release-title">{t.releaseTitle}</h2>
+        <p className="release-lead">{t.releaseText}</p>
+        <div className="release-grid">
+          {t.releaseItems.map(([title, text]) => (
+            <article key={title}>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
+          ))}
+        </div>
+        <a
+          className="text-link release-link"
+          href="https://github.com/biztrackru/diktum/releases/tag/v0.2.0-alpha.2"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t.releaseLink}
+        </a>
       </section>
 
       <section className="story-section">

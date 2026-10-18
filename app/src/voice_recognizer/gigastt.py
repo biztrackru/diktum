@@ -17,7 +17,7 @@ class GigasttError(RuntimeError):
     pass
 
 
-ASR_JSON_VERSION = 2
+ASR_JSON_VERSION = 3
 ASR_QUALITY_VERSION = 1
 SPEAKER_QUALITY_VERSION = 1
 
@@ -90,6 +90,7 @@ def run_gigastt(
 
     ensure_prequantized_compat(model_dir)
     output_json.parent.mkdir(parents=True, exist_ok=True)
+    end_to_end = (model_dir / "v3_e2e_rnnt_encoder_int8.onnx").is_file()
     command = [
         str(gigastt_bin),
         "--log-level",
@@ -100,10 +101,12 @@ def run_gigastt(
         "--punct-model-dir",
         str(punct_model_dir),
         "--punctuation",
-        "on",
+        "off" if end_to_end else "on",
         "--itn",
-        "auto",
+        "off" if end_to_end else "auto",
     ]
+    if end_to_end:
+        command.extend(["--model-variant", "e2e_rnnt"])
     if hotwords_file is not None:
         if not hotwords_file.exists():
             raise GigasttError(f"hotwords file not found: {hotwords_file}")
@@ -118,7 +121,9 @@ def run_gigastt(
         str(source),
     ])
     started = time.perf_counter()
-    result = subprocess.run(command, capture_output=True, text=True)
+    import os
+    result = subprocess.run(command, capture_output=True, text=True,
+                            env={**os.environ, "GIGASTT_OFFLINE": "1"})
     if result.returncode != 0:
         details = (result.stderr or result.stdout).strip()
         suffix = f": {details}" if details else ""
@@ -126,6 +131,9 @@ def run_gigastt(
     annotate_gigastt_json(
         output_json,
         asr_json_metadata(
+            gigastt_bin=gigastt_bin,
+            model_dir=model_dir,
+            punct_model_dir=punct_model_dir,
             hotwords_file=hotwords_file,
             hotwords_default=hotwords_default,
             chunk_seconds=chunk_seconds,
@@ -138,17 +146,22 @@ def run_gigastt(
 
 def asr_json_metadata(
     *,
+    gigastt_bin: Path | None = None,
+    model_dir: Path | None = None,
+    punct_model_dir: Path | None = None,
     hotwords_file: Path | None,
     hotwords_default: bool,
     chunk_seconds: float | None = None,
     chunk_start: float | None = None,
     chunk_duration: float | None = None,
 ) -> dict[str, Any]:
+    from voice_recognizer.runtime_identity import gigastt_identity
     return {
         "asr_json_version": ASR_JSON_VERSION,
+        "runtime": gigastt_identity(gigastt_bin, model_dir, punct_model_dir),
         "gigastt": {
-            "punctuation": "on",
-            "itn": "auto",
+            "punctuation": "off" if model_dir and (model_dir / "v3_e2e_rnnt_encoder_int8.onnx").is_file() else "on",
+            "itn": "off" if model_dir and (model_dir / "v3_e2e_rnnt_encoder_int8.onnx").is_file() else "auto",
             "hotwords_file": str(hotwords_file) if hotwords_file is not None else None,
             "hotwords_sha256": _file_sha256(hotwords_file) if hotwords_file is not None else None,
             "hotwords_default": hotwords_default,
@@ -173,6 +186,9 @@ def annotate_gigastt_json(path: Path, metadata: dict[str, Any]) -> None:
 def gigastt_json_matches_options(
     path: Path,
     *,
+    gigastt_bin: Path | None = None,
+    model_dir: Path | None = None,
+    punct_model_dir: Path | None = None,
     hotwords_file: Path | None,
     hotwords_default: bool,
     chunk_seconds: float | None = None,
@@ -184,6 +200,9 @@ def gigastt_json_matches_options(
     except (OSError, json.JSONDecodeError):
         return False
     return payload.get("voice_recognizer") == asr_json_metadata(
+        gigastt_bin=gigastt_bin,
+        model_dir=model_dir,
+        punct_model_dir=punct_model_dir,
         hotwords_file=hotwords_file,
         hotwords_default=hotwords_default,
         chunk_seconds=chunk_seconds,

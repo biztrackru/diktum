@@ -20,7 +20,7 @@ from voice_recognizer.diarization import (
     run_pyannote,
     write_diarization_json,
 )
-from voice_recognizer.engines import ASR_ENGINE_LABELS, DEFAULT_ASR_ENGINE, CTC_ENGINE, artifact_suffix, normalize_asr_engine
+from voice_recognizer.engines import ASR_ENGINE_LABELS, DEFAULT_ASR_ENGINE, CTC_ENGINE, E2E_RNNT_ENGINE, artifact_suffix, normalize_asr_engine
 from voice_recognizer.formatting import TranscriptSegment, write_markdown
 from voice_recognizer.gigastt import (
     GigasttError,
@@ -386,6 +386,9 @@ def _run_asr_to_json(
             normalize_audio(audio_path, chunk.audio_path, start=chunk.start, duration=chunk.duration)
         if skip_existing and chunk.json_path.exists() and gigastt_json_matches_options(
             chunk.json_path,
+            gigastt_bin=gigastt_bin,
+            model_dir=model_dir,
+            punct_model_dir=punct_model_dir,
             hotwords_file=hotwords_file,
             hotwords_default=hotwords_default,
             chunk_seconds=effective_chunk_seconds,
@@ -425,6 +428,9 @@ def _run_asr_to_json(
             words=combined_words,
         ),
         metadata=asr_json_metadata(
+            gigastt_bin=gigastt_bin,
+            model_dir=model_dir,
+            punct_model_dir=punct_model_dir,
             hotwords_file=hotwords_file,
             hotwords_default=hotwords_default,
             chunk_seconds=effective_chunk_seconds,
@@ -1011,6 +1017,8 @@ def _run_pipeline_to_outputs(
     skip_existing: bool = True,
 ) -> PipelineOutputs:
     asr_engine = normalize_asr_engine(asr_engine)
+    if asr_engine == E2E_RNNT_ENGINE and model_dir.name == "gigastt":
+        model_dir = model_dir.with_name("gigastt-e2e")
     created_at = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{safe_stem(source)}{_clip_suffix(start, duration)}{artifact_suffix(asr_engine)}"
@@ -1019,6 +1027,9 @@ def _run_pipeline_to_outputs(
     diarization_json = output_dir / f"{stem}.pyannote.json"
     manifest_json = output_dir / f"{stem}.manifest.json"
     speaker_names = speaker_names or {}
+    if asr_engine == E2E_RNNT_ENGINE:
+        if not (model_dir / "v3_e2e_rnnt_encoder_int8.onnx").is_file():
+            raise GigasttError("Модель e2e RNNT не установлена. Запустите .venv/bin/python -m voice_recognizer.assets install e2e-rnnt.")
     if asr_engine == CTC_ENGINE:
         from voice_recognizer.handy_ctc import availability
         ready, message = availability()
@@ -1032,17 +1043,15 @@ def _run_pipeline_to_outputs(
     if hotwords_default:
         console.print("[cyan]ASR hotwords:[/cyan] built-in default lexicon enabled")
 
-    prepared_identity = None
-    if asr_engine == CTC_ENGINE:
-        stat = source.stat()
-        prepared_identity = {"path": str(source.resolve()), "size": stat.st_size,
-                             "mtime_ns": stat.st_mtime_ns, "start": start, "duration": duration}
-        identity_path = audio_path.with_suffix(".source.json")
-        try:
-            if json.loads(identity_path.read_text()) != prepared_identity:
-                skip_existing = False
-        except (OSError, ValueError):
+    stat = source.stat()
+    prepared_identity = {"path": str(source.resolve()), "size": stat.st_size,
+                         "mtime_ns": stat.st_mtime_ns, "start": start, "duration": duration}
+    identity_path = audio_path.with_suffix(".source.json")
+    try:
+        if json.loads(identity_path.read_text()) != prepared_identity:
             skip_existing = False
+    except (OSError, ValueError):
+        skip_existing = False
     if skip_existing and audio_path.exists():
         console.print(f"[yellow]Using prepared audio:[/yellow] {audio_path}")
     else:
@@ -1060,6 +1069,9 @@ def _run_pipeline_to_outputs(
     engine_seconds: float | None = None
     asr_json_current = asr_json.exists() and gigastt_json_matches_options(
         asr_json,
+        gigastt_bin=gigastt_bin,
+        model_dir=model_dir,
+        punct_model_dir=punct_model_dir,
         hotwords_file=hotwords_file,
         hotwords_default=hotwords_default,
         chunk_seconds=expected_asr_chunk_seconds,
@@ -1385,6 +1397,9 @@ def batch_gigastt(
         console.print(f"[cyan][{index}/{len(files)}][/cyan] {source.name}")
         output_json_current = output_json.exists() and gigastt_json_matches_options(
             output_json,
+            gigastt_bin=gigastt_bin,
+            model_dir=model_dir,
+            punct_model_dir=punct_model_dir,
             hotwords_file=resolved_hotwords,
             hotwords_default=hotwords_default,
         )
@@ -1435,7 +1450,7 @@ def process_file(
     asr_engine: str = typer.Option(
         "auto",
         "--asr-engine",
-        help="auto uses the local preference; gigastt-gigaam-v3 or handy-gigaam-v3-e2e-ctc.",
+        help="auto uses the local preference; gigastt-gigaam-v3, handy-gigaam-v3-e2e-ctc, or e2e-rnnt.",
     ),
     pyannote_model_id: str = typer.Option("pyannote/speaker-diarization-community-1", "--pyannote-model-id"),
     hf_token_env: str = typer.Option("HF_TOKEN", "--hf-token-env"),
@@ -1844,7 +1859,7 @@ def batch_process(
     asr_engine: str = typer.Option(
         "auto",
         "--asr-engine",
-        help="auto uses the local preference; gigastt-gigaam-v3 or handy-gigaam-v3-e2e-ctc.",
+        help="auto uses the local preference; gigastt-gigaam-v3, handy-gigaam-v3-e2e-ctc, or e2e-rnnt.",
     ),
     pyannote_model_id: str = typer.Option("pyannote/speaker-diarization-community-1", "--pyannote-model-id"),
     hf_token_env: str = typer.Option("HF_TOKEN", "--hf-token-env"),
@@ -2019,7 +2034,7 @@ def check_pyannote_access(
     """Check whether the local Hugging Face token can access a pyannote model."""
     try:
         from huggingface_hub import HfApi
-        from huggingface_hub import hf_hub_download
+        from huggingface_hub import snapshot_download
         from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
     except ImportError as error:
         raise typer.BadParameter(
@@ -2030,7 +2045,10 @@ def check_pyannote_access(
     api = HfApi(token=token)
     try:
         whoami = api.whoami()
-        hf_hub_download(model_id, "config.yaml", token=token)
+        from voice_recognizer.diarization import COMMUNITY_MODEL, COMMUNITY_REVISION
+        snapshot_download(model_id, token=token,
+            revision=COMMUNITY_REVISION if model_id == COMMUNITY_MODEL else None,
+            allow_patterns=["config.yaml", "embedding/*", "segmentation/*"])
     except GatedRepoError as error:
         raise typer.BadParameter(
             f"Token is valid, but access to {model_id} is not enabled. "

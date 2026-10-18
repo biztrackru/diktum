@@ -191,7 +191,7 @@ python_is_compatible() {
   "$python_bin" - <<'PY'
 import sys
 version = sys.version_info[:2]
-raise SystemExit(0 if (3, 10) <= version < (3, 13) else 1)
+raise SystemExit(0 if version == (3, 12) else 1)
 PY
 }
 
@@ -270,7 +270,7 @@ ensure_python() {
     return 0
   fi
 
-  warn "Нужен Python 3.10-3.12. Подходящий Python не найден."
+  warn "Нужен Python 3.12. Подходящий Python не найден."
   if command -v brew >/dev/null 2>&1; then
     if ask_yes_no "Установить Python 3.12 через Homebrew?" "y"; then
       brew install python@3.12
@@ -307,14 +307,18 @@ ensure_venv_and_dependencies() {
     fi
   else
     ok ".venv уже существует."
+    if ! python_is_compatible "$VENV_PYTHON"; then
+      fail "Существующая .venv использует другой Python. Сохраните её как резервную копию и повторите настройку с Python 3.12."
+      return 1
+    fi
   fi
 
   echo
   echo "Зависимости Python устанавливаются локально в .venv."
   echo "Это включает pyannote.audio для разделения по спикерам."
   if ask_yes_no "Установить/обновить зависимости Python сейчас?" "y"; then
-    if "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel \
-      && (cd "$APP_DIR" && "$VENV_PYTHON" -m pip install -e '.[diarization]'); then
+    if "$VENV_PYTHON" -m pip install --require-hashes -r "$APP_DIR/requirements-macos-arm64-py312.lock" \
+      && "$VENV_PYTHON" -m pip install --no-deps --no-build-isolation -e "$APP_DIR"; then
       ok "Python-зависимости готовы."
     else
       fail "Не удалось установить Python-зависимости."
@@ -478,7 +482,7 @@ verify_gigastt_runtime() {
 }
 
 ensure_gigastt() {
-  if verify_gigastt_runtime >/dev/null; then
+  if PYTHONPATH="$APP_DIR/src" "$VENV_PYTHON" -m voice_recognizer.assets status gigastt rnnt ctc vad --root "$WORKSPACE_DIR" >/dev/null 2>&1; then
     ok "GigaSTT binary и GigaAM v3 модели найдены."
     print_gigastt_inventory
     return 0
@@ -527,7 +531,7 @@ check_pyannote_access() {
     return 1
   fi
 
-  if ask_yes_no "Проверить доступ HF token к pyannote сейчас? Токен не будет напечатан." "y"; then
+  if ask_yes_no "Проверить HF token и скачать локальную модель спикеров? Токен не будет напечатан." "y"; then
     if HF_TOKEN="$token_value" PYTHONPATH="$APP_DIR/src" "$VENV_PYTHON" -m voice_recognizer.cli check-pyannote-access; then
       ok "Доступ к pyannote проверен."
     else
@@ -566,6 +570,13 @@ print_machine_info() {
   local arch
   arch="$(uname -m)"
   echo "Mac architecture: $arch"
+  local os_version="$(sw_vers -productVersion 2>/dev/null || echo 0)"
+  local os_major="${os_version%%.*}"
+  if [[ "$arch" != "arm64" || "$os_major" -lt 14 ]]; then
+    fail "Эта сборка требует macOS 14+ и Apple Silicon. Обновите macOS или используйте прежнюю сборку."
+    pause_before_close
+    exit 1
+  fi
   if [[ "$arch" == "arm64" ]]; then
     ok "Apple Silicon обнаружен. Целевой MacBook M5/32GB подходит."
   else

@@ -7,13 +7,14 @@ from pathlib import Path
 
 DEFAULT_ASR_ENGINE = "gigastt-gigaam-v3"
 CTC_ENGINE = "handy-gigaam-v3-e2e-ctc"
+E2E_RNNT_ENGINE = "gigastt-gigaam-v3-e2e-rnnt"
 
 
 def configured_default(root: Path | None = None) -> str:
     """Local preference, never inferred from the presence of another app."""
     try:
         value = json.loads(((root or Path.cwd()) / ".cache/asr-engine.json").read_text())["engine"]
-        if value in {DEFAULT_ASR_ENGINE, CTC_ENGINE}:
+        if value in {DEFAULT_ASR_ENGINE, CTC_ENGINE, E2E_RNNT_ENGINE}:
             return value
     except (OSError, ValueError, KeyError, TypeError):
         pass
@@ -21,7 +22,7 @@ def configured_default(root: Path | None = None) -> str:
 
 
 def artifact_suffix(engine: str) -> str:
-    return ".gigaam-e2e-ctc" if engine == CTC_ENGINE else ""
+    return {CTC_ENGINE: ".gigaam-e2e-ctc", E2E_RNNT_ENGINE: ".gigaam-e2e-rnnt"}.get(engine, "")
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,12 @@ ASR_ENGINE_CHOICES: tuple[AsrEngineChoice, ...] = (
     ),
     AsrEngineChoice(
         value=CTC_ENGINE,
-        label="GigaAM v3 e2e CTC (как в Handy)",
+        label="GigaAM v3 e2e CTC",
+        available=True,
+    ),
+    AsrEngineChoice(
+        value=E2E_RNNT_ENGINE,
+        label="GigaAM v3 e2e RNNT",
         available=True,
     ),
     AsrEngineChoice(
@@ -58,6 +64,7 @@ ASR_ENGINE_ALIASES = {
     DEFAULT_ASR_ENGINE: DEFAULT_ASR_ENGINE,
     CTC_ENGINE: CTC_ENGINE,
     "handy-gigaam-v3": CTC_ENGINE,
+    "e2e-rnnt": E2E_RNNT_ENGINE,
 }
 
 

@@ -6,7 +6,7 @@
 
 ## Что умеет
 
-- Распознает русскую речь локально через `GigaSTT / GigaAM v3 RNNT` или опциональный `GigaAM v3 e2e CTC` с моделью и подготовкой спектра как в Handy 0.9.6.
+- Распознает русскую речь локально через `GigaSTT / GigaAM v3 RNNT`, локальный `GigaAM v3 e2e CTC` или дополнительный `GigaAM v3 e2e RNNT`.
 - Разделяет запись по спикерам через pyannote.
 - Обрабатывает длинные файлы чанками, без практического лимита в 1-2 часа.
 - Поддерживает пакетную обработку папки `Inbox/`.
@@ -49,7 +49,7 @@ GitHub Releases: https://github.com/biztrackru/diktum/releases
 
 Рекомендуется:
 
-- macOS на Apple Silicon;
+- macOS 14 или новее на Apple Silicon;
 - 16 GB RAM минимум;
 - 32 GB RAM комфортнее для длинных записей и batch;
 - 20-30 GB свободного места для моделей, cache и результатов;
@@ -77,9 +77,9 @@ GitHub Releases: https://github.com/biztrackru/diktum/releases
 ```bash
 git clone https://github.com/biztrackru/diktum.git dictum
 cd dictum
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e 'app[diarization]'
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r app/requirements-macos-arm64-py312.lock
+.venv/bin/python -m pip install --no-deps --no-build-isolation -e app
 cp app/.env.example .env
 ```
 
@@ -147,16 +147,51 @@ app/scripts/build_install_pack.sh
 
 ## Конфигурация
 
-### Локальный GigaAM e2e CTC (Handy)
+### Локальные модели и обновления
 
-Для уже установленной модели GigaAM v3 в Handy доступен второй ASR backend:
+Обычная настройка устанавливает GigaSTT 2.22.0, проверенный набор GigaAM RNNT,
+GigaAM e2e CTC и Silero v4/v6. Все ресурсы скачиваются только на этапе настройки,
+проверяются по SHA-256 из `app/config/resources.json` и хранятся в `.models/`.
+Повторная настройка проверяет версии и содержимое, а заменяемые файлы сохраняет
+в `.cache/resource-backups/`. Аудио, результаты и профили голосов не изменяются.
+
+CTC доступен без установленного Handy:
 
 ```bash
-.venv/bin/python -m pip install -e 'app[ctc]'
 .venv/bin/dictum process 'Inbox/recording.m4a' --asr-engine handy-gigaam-v3-e2e-ctc
 ```
 
-Он читает модель `model.int8.onnx` и `vocab.txt` из стандартной папки моделей Handy, а Silero v4 — из установленного приложения. Handy запускать не нужно; его настройки и история не изменяются. Автоматических скачиваний и внешних запросов в этом ASR backend нет.
+Он предпочитает `.models/ctc/model.int8.onnx`, `.models/ctc/vocab.txt` и
+`.models/vad/silero_vad_v4.onnx`. Для совместимости сохраняется fallback на файлы
+Handy и Silero v4, если собственные ресурсы ещё не установлены. Обработка CTC
+не скачивает модели. Телеметрия pyannote и Hugging Face отключена для CLI и web.
+
+Silero v4 остаётся по умолчанию: на коротком сравнении v6 меняет границы окон
+и текст, но не даёт подтверждённого улучшения. Для явной проверки v6 задайте
+`VOICE_RECOGNIZER_CTC_VAD_PATH=.models/vad/silero_vad_v6.onnx` в локальном `.env`
+для web jobs или в окружении CLI. Новые CTC-результаты пересчитываются при смене
+файла VAD или версии ONNX Runtime.
+
+Дополнительную модель со встроенной пунктуацией можно установить и выбрать отдельно:
+
+```bash
+PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.assets install e2e-rnnt
+.venv/bin/dictum process 'Inbox/recording.m4a' --asr-engine e2e-rnnt
+```
+
+Этот профиль хранится в `.models/gigastt-e2e/`, создаёт результаты с отдельным
+суффиксом `.gigaam-e2e-rnnt` и не меняет выбор ASR по умолчанию. GigaSTT запускается
+в offline-режиме: при отсутствии ресурса нужно повторить настройку.
+
+Для подготовки без сети из уже загруженного кеша:
+
+```bash
+PYTHONPATH=app/src .venv/bin/python -m voice_recognizer.assets install --offline
+```
+
+Сборка рассчитана на Python 3.12 и macOS 14+ arm64. Lock содержит точные версии
+и хеши транзитивных зависимостей; для его пересоздания используйте uv с
+`MACOSX_DEPLOYMENT_TARGET=14.0` и extras `ctc`, `diarization`, `docs`, `installer`.
 
 Для самостоятельного размещения тех же файлов задайте `VOICE_RECOGNIZER_CTC_MODEL_DIR` и `VOICE_RECOGNIZER_CTC_VAD_PATH` в окружении процесса. Для web jobs их также можно задать в локальном `.env`.
 

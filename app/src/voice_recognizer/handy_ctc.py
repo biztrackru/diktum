@@ -17,17 +17,24 @@ from typing import Callable
 from voice_recognizer.gigastt import GigasttError
 
 ENGINE = "handy-gigaam-v3-e2e-ctc"
-VERSION = 2
+VERSION = 3
 RATE = 16000
 MAX_SECONDS = 22
 CONTEXT_SECONDS = 0.4
 
 
 def model_paths() -> tuple[Path, Path, Path]:
+    local = Path.cwd() / ".models"
+    local_model = local / "ctc"
+    # Keep the validated segmentation default. V6 is an explicit opt-in until
+    # its different cut points demonstrate a quality gain on longer recordings.
+    local_vad = local / "vad/silero_vad_v4.onnx"
     directory = Path(os.environ.get("VOICE_RECOGNIZER_CTC_MODEL_DIR") or
-                     Path.home() / "Library/Application Support/com.pais.handy/models/giga-am-v3-int8")
+                     (local_model if (local_model / "model.int8.onnx").is_file() else
+                      Path.home() / "Library/Application Support/com.pais.handy/models/giga-am-v3-int8"))
     vad = Path(os.environ.get("VOICE_RECOGNIZER_CTC_VAD_PATH") or
-               "/Applications/Handy.app/Contents/Resources/resources/models/silero_vad_v4.onnx")
+               (local_vad if local_vad.is_file() else
+                "/Applications/Handy.app/Contents/Resources/resources/models/silero_vad_v4.onnx"))
     return directory / "model.int8.onnx", directory / "vocab.txt", vad
 
 
@@ -35,7 +42,7 @@ def availability() -> tuple[bool, str]:
     import importlib.util
     missing = [str(p) for p in model_paths() if not p.is_file()]
     if missing:
-        return False, "Не найдены локальные файлы GigaAM CTC/Silero. Установите модель GigaAM v3 в Handy или задайте VOICE_RECOGNIZER_CTC_MODEL_DIR и VOICE_RECOGNIZER_CTC_VAD_PATH."
+        return False, "Не найдены локальные файлы GigaAM CTC/Silero. Запустите Настроить Диктум.command или задайте VOICE_RECOGNIZER_CTC_MODEL_DIR и VOICE_RECOGNIZER_CTC_VAD_PATH."
     if any(importlib.util.find_spec(name) is None for name in ("numpy", "onnxruntime")):
         return False, "Установите зависимости: .venv/bin/python -m pip install -e 'app[ctc]'"
     return True, "GigaAM e2e CTC и Silero найдены локально"
@@ -175,6 +182,7 @@ class LocalCtc:
     def __init__(self):
         import numpy as np
         import onnxruntime as ort
+        ort.disable_telemetry_events()
         ready, message = availability()
         if not ready:
             raise GigasttError(message)
@@ -185,8 +193,9 @@ class LocalCtc:
         options.log_severity_level = 3
         self.asr = ort.InferenceSession(str(model), options, providers=["CPUExecutionProvider"])
         self.vad = ort.InferenceSession(str(vad), options, providers=["CPUExecutionProvider"])
-        if {item.name for item in self.vad.get_inputs()} != {"input", "sr", "h", "c"}:
-            raise GigasttError("Нужна модель Silero v4 из Handy (входы input/sr/h/c).")
+        self.vad_inputs = {item.name for item in self.vad.get_inputs()}
+        if self.vad_inputs not in ({"input", "sr", "h", "c"}, {"input", "sr", "state"}):
+            raise GigasttError("Неподдерживаемая модель Silero. Запустите Настроить Диктум.command.")
         self.vocab = {int(line.rsplit(" ", 1)[1]): line.rsplit(" ", 1)[0]
                       for line in vocab.read_text(encoding="utf-8").splitlines() if line.strip()}
         self.np = np
@@ -195,12 +204,21 @@ class LocalCtc:
         np = self.np
         h = np.zeros((2, 1, 64), dtype=np.float32)
         c = np.zeros_like(h)
+        state = np.zeros((2, 1, 128), dtype=np.float32)
+        context = np.zeros(64, dtype=np.float32)
         probabilities = []
         for i in range(0, len(samples), 512):
             block = samples[i:i + 512]
             if len(block) < 512:
                 block = np.pad(block, (0, 512 - len(block)))
-            output, h, c = self.vad.run(None, {"input": block[None], "sr": np.array(RATE, dtype=np.int64), "h": h, "c": c})
+            if "state" in self.vad_inputs:
+                # Silero v5/v6 require 64 samples of previous context at 16 kHz.
+                window = np.concatenate((context, block))
+                output, state = self.vad.run(None, {"input": window[None],
+                    "sr": np.array(RATE, dtype=np.int64), "state": state})
+                context = block[-64:]
+            else:
+                output, h, c = self.vad.run(None, {"input": block[None], "sr": np.array(RATE, dtype=np.int64), "h": h, "c": c})
             probabilities.append(float(output[0, 0]))
         return probabilities
 
@@ -222,7 +240,10 @@ def transcribe(audio: Path, output: Path, cache_dir: Path, *, skip_existing: boo
     if not ready:
         raise GigasttError(message)
     started = time.perf_counter()
+    from voice_recognizer.runtime_identity import package_version
     metadata = {"engine": ENGINE, "version": VERSION,
+                "onnxruntime": package_version("onnxruntime"),
+                "numpy": package_version("numpy"),
                 "audio_sha256": file_digest(audio),
                 "asset_sha256": [file_digest(p) for p in model_paths()],
                 "max_seconds": MAX_SECONDS, "context_seconds": CONTEXT_SECONDS,

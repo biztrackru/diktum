@@ -1,31 +1,36 @@
 [project]
 name = "voice-recognizer"
-version = "0.2.0a1"
+version = "0.2.0a2"
 description = "Diktum: local Russian transcription and speaker diarization pipeline for long voice recordings."
-requires-python = ">=3.10,<3.14"
-# Dependencies are bounded with upper limits for reproducible, supply-chain-safe
-# installs. Prefer regenerating a full lock file (pip-tools/uv) before release.
+requires-python = ">=3.12,<3.13"
+# Release installs use requirements-macos-arm64-py312.lock (including hashes).
 dependencies = [
-    "typer>=0.12,<1.0",
-    "rich>=13.7,<14.0",
+    "typer>=0.27.3,<0.28",
+    "rich>=15,<16",
 ]
 
 [project.optional-dependencies]
+installer = [
+    "pip==26.2.1",
+    "setuptools==84.0.0",
+    "wheel>=0.46,<1",
+]
 ctc = [
-    "numpy>=1.26,<3.0",
-    "onnxruntime>=1.20,<2.0",
+    "numpy>=2.5.4,<2.6",
+    "onnxruntime>=1.31,<1.32",
 ]
 asr = [
-    # SECURITY: pin to a reviewed commit before distributing. An unpinned
-    # git dependency installs whatever is on the default branch at install
-    # time, which is a supply-chain risk. Replace <COMMIT_SHA> with a commit
-    # you have reviewed, e.g.:
-    #   "gigaam @ git+https://github.com/salute-developers/GigaAM.git@<COMMIT_SHA>"
-    "gigaam @ git+https://github.com/salute-developers/GigaAM.git",
+    # Optional upstream research package; the product uses ONNX/Rust backends.
+    "gigaam @ git+https://github.com/salute-developers/GigaAM.git@7447938d791c4f3e643386ee22c33777004293a5",
 ]
 diarization = [
-    "numpy>=1.26,<3.0",
-    "pyannote.audio>=4,<5",
+    "numpy>=2.5.4,<2.6",
+    "pyannote.audio==4.0.7",
+    "torch>=2.14.1,<2.15",
+    "torchcodec>=0.17,<0.18",
+    "lightning>=2.6.6,<3",
+    "pytorch-lightning>=2.6.6,<3",
+    "huggingface-hub>=2.2,<3",
 ]
 docs = [
     "python-docx>=1.1,<2.0",

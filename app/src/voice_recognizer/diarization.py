@@ -16,7 +16,9 @@ class DiarizationError(RuntimeError):
     pass
 
 
-DIARIZATION_JSON_VERSION = 1
+DIARIZATION_JSON_VERSION = 2
+COMMUNITY_MODEL = "pyannote/speaker-diarization-community-1"
+COMMUNITY_REVISION = "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee"
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,8 @@ def run_pyannote(
     try:
         import numpy as np
         import torch
+        from voice_recognizer.runtime_identity import disable_onnx_telemetry
+        disable_onnx_telemetry()
         from pyannote.audio import Pipeline
     except ImportError as error:
         raise DiarizationError(
@@ -70,10 +74,16 @@ def run_pyannote(
 
     _emit_progress(
         progress,
-        f"Diarization / pyannote: loading model {model_id}. First run may download/cache model files.",
+        f"Diarization / pyannote: loading local model {model_id}.",
     )
     try:
-        pipeline = Pipeline.from_pretrained(model_id, token=hf_token)
+        # Resolve only cached assets. Network downloads belong to explicit setup.
+        checkpoint = Path(model_id)
+        if not checkpoint.is_dir():
+            from huggingface_hub import hf_hub_download
+            checkpoint = Path(hf_hub_download(model_id, "config.yaml", local_files_only=True,
+                revision=COMMUNITY_REVISION if model_id == COMMUNITY_MODEL else None)).parent
+        pipeline = Pipeline.from_pretrained(checkpoint, token=False)
     except Exception as error:
         message = str(error)
         if "403" in message or "gated" in message.lower() or "authorized" in message.lower():
@@ -82,7 +92,8 @@ def run_pyannote(
                 f"Open https://huggingface.co/{model_id}, accept/request access, "
                 "then rerun the command with the same .env token."
             ) from error
-        raise DiarizationError(f"Could not load pyannote model {model_id}: {error}") from error
+        raise DiarizationError(f"Локальная модель pyannote недоступна: {model_id}. "
+            "Запустите Настроить Диктум.command и подготовьте модель разделения по спикерам.") from error
     if pipeline is None:
         raise DiarizationError(
             f"Could not load {model_id}. Check the Hugging Face token and model access."
@@ -216,10 +227,15 @@ def diarization_json_metadata(
     min_speakers: int | None,
     max_speakers: int | None,
 ) -> dict[str, Any]:
+    from voice_recognizer.runtime_identity import package_version
     return {
         "diarization_json_version": DIARIZATION_JSON_VERSION,
         "pyannote": {
             "model_id": model_id,
+            "revision": COMMUNITY_REVISION if model_id == COMMUNITY_MODEL else None,
+            "runtime": {name: package_version(name) for name in (
+                "pyannote.audio", "torch", "torchaudio", "numpy", "scipy",
+                "scikit-learn", "pyannote-core", "pyannote-pipeline")},
             "device": device,
             "speaker_constraints": {
                 "num_speakers": num_speakers,

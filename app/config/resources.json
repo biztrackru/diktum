@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "platform": "darwin-arm64",
+  "community_revision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
+  "groups": {
+    "gigastt": {
+      "version": "2.22.0",
+      "resources": [
+        {
+          "target": "tools/bin/gigastt",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/v2.22.0/gigastt-2.22.0-aarch64-apple-darwin.tar.gz",
+          "sha256": "6cbcc42b4aa76feaf9c4df88b3de5e374d681e28702bb70c9fa38cb0329e2368",
+          "members": {
+            "gigastt": "tools/bin/gigastt"
+          }
+        }
+      ]
+    },
+    "rnnt": {
+      "version": "models-v3-2026-10-09",
+      "resources": [
+        {
+          "target": ".models/gigastt/v3_rnnt_encoder_int8.onnx",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_rnnt_encoder_int8.onnx",
+          "sha256": "1d5a6f580b692e38ba35ed98d0f54648808f27b0a147dc11bd8978c15dc1a18f"
+        },
+        {
+          "target": ".models/gigastt/v3_rnnt_decoder.onnx",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_rnnt_decoder.onnx",
+          "sha256": "443c3b7bd42b453611618135d6b1e7d9467e5dd97c8a68501da4aa355750c0da"
+        },
+        {
+          "target": ".models/gigastt/v3_rnnt_joint.onnx",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_rnnt_joint.onnx",
+          "sha256": "fd1d02f45c2ad3d6b67cc149811ad794ab4b020ed49a0a9e2790a8619d1cddd8"
+        },
+        {
+          "target": ".models/gigastt/v3_vocab.txt",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_vocab.txt",
+          "sha256": "a9143c30844d3c0bee3e9e927e4084774eb1b9eeaafc473b2c4521e4911a7c07"
+        },
+        {
+          "target": ".models/gigastt/punct/rupunct_small_int8.onnx",
+          "url": "https://huggingface.co/ekhodzitsky/rupunct-small-onnx/resolve/c4a35be7e4a413cdfb08427db75b621b571569c9/rupunct_small_int8.onnx",
+          "sha256": "b105da023474d98aa13ba18953ae67b04b17bd0595034bc06030c17536893933"
+        },
+        {
+          "target": ".models/gigastt/punct/config.json",
+          "url": "https://huggingface.co/ekhodzitsky/rupunct-small-onnx/resolve/c4a35be7e4a413cdfb08427db75b621b571569c9/config.json",
+          "sha256": "6924a8cf41ec2bd3a3aa73a387ae0ccd0aed253ec7cac4d2f53c7d27440891eb"
+        },
+        {
+          "target": ".models/gigastt/punct/tokenizer.json",
+          "url": "https://huggingface.co/ekhodzitsky/rupunct-small-onnx/resolve/c4a35be7e4a413cdfb08427db75b621b571569c9/tokenizer.json",
+          "sha256": "7ca617388c2092a3a84272025c52bbf3c6db0aee225c0351186295c0b5d3ddc6"
+        }
+      ]
+    },
+    "e2e-rnnt": {
+      "version": "models-v3-2026-10-09",
+      "resources": [
+        {
+          "target": ".models/gigastt-e2e/v3_e2e_rnnt_encoder_int8.onnx",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_e2e_rnnt_encoder_int8.onnx",
+          "sha256": "16805903b102d8b27bb0253de044f25e33a8a5bf07fce0c4da4ac1a5a7544091"
+        },
+        {
+          "target": ".models/gigastt-e2e/v3_e2e_rnnt_decoder.onnx",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_e2e_rnnt_decoder.onnx",
+          "sha256": "7b0a16d67fd2cb37061decc93c69e364a9ab27afee3c57495d55b1c974cf7231"
+        },
+        {
+          "target": ".models/gigastt-e2e/v3_e2e_rnnt_joint.onnx",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_e2e_rnnt_joint.onnx",
+          "sha256": "602ff7017a93311aad34df1437c8d7f49911353c13d6eae7a6ee7b041339465c"
+        },
+        {
+          "target": ".models/gigastt-e2e/v3_e2e_rnnt_vocab.txt",
+          "url": "https://github.com/ekhodzitsky/gigastt/releases/download/models-v3-2026-10-09/v3_e2e_rnnt_vocab.txt",
+          "sha256": "39abae20e692998290c574e606f11a9edef2902a1995463fcff63d1490cf22b7"
+        }
+      ]
+    },
+    "ctc": {
+      "version": "Handy-v0.9.8-ctc",
+      "resources": [
+        {
+          "target": ".models/ctc/model.int8.onnx",
+          "url": "https://blob.handy.computer/giga-am-v3-int8.tar.gz",
+          "sha256": "d872462268430db140b69b72e0fc4b787b194c1dbe51b58de39444d55b6da45b",
+          "members": {
+            "model.int8.onnx": ".models/ctc/model.int8.onnx",
+            "vocab.txt": ".models/ctc/vocab.txt"
+          }
+        }
+      ]
+    },
+    "vad": {
+      "version": "silero-v4-and-v6.2.3",
+      "resources": [
+        {
+          "target": ".models/vad/silero_vad_v4.onnx",
+          "url": "https://raw.githubusercontent.com/cjpais/Handy/v0.9.8/src-tauri/resources/models/silero_vad_v4.onnx",
+          "sha256": "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28"
+        },
+        {
+          "target": ".models/vad/silero_vad_v6.onnx",
+          "url": "https://raw.githubusercontent.com/snakers4/silero-vad/5cd7945676eb32225748052e2e6a0580e4686a08/src/silero_vad/data/silero_vad.onnx",
+          "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"
+        }
+      ]
+    }
+  }
+}
